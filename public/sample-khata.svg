@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="1000" viewBox="0 0 800 1000">
+  <rect width="800" height="1000" fill="#fbf6e6"/>
+  <g stroke="#9ec3e6" stroke-width="2">
+    <path d="M0 140H800M0 220H800M0 300H800M0 380H800M0 460H800M0 540H800M0 620H800M0 700H800M0 780H800M0 860H800"/>
+  </g>
+  <path d="M110 0V1000" stroke="#e48a8a" stroke-width="3"/>
+  <g font-family="'Segoe Script','Bradley Hand','Comic Sans MS',cursive" fill="#1b2a6b" font-size="46">
+    <text x="130" y="100" font-size="52" fill="#7a1f1f">Sharma Kirana - Khata</text>
+    <text x="130" y="205">Ramesh ........ 850</text>
+    <text x="130" y="285">Sunita ........ 120</text>
+    <text x="130" y="365">Abdul ........ 370</text>
+    <text x="130" y="445">Meena Devi ... 600</text>
+    <text x="130" y="525">Lakshmi ...... 150</text>
+    <text x="130" y="605">Kiran ........ 75</text>
+  </g>
+</svg>
