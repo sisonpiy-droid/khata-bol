@@ -2,6 +2,7 @@ import 'dotenv/config'
 import express from 'express'
 
 const MODEL = process.env.ANTHROPIC_MODEL || 'claude-haiku-5-5'
+const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-3.6-flash'
 
 const PARSE = `You convert one spoken command from an Indian kirana (grocery) shopkeeper's udhaar (credit) ledger into JSON.
 The text is a speech-to-text transcript in ANY language (Hindi, Hinglish, English, Bengali, Gujarati, Punjabi, Tamil, Telugu, Kannada, Malayalam, Marathi, Urdu, ...), in native script or romanised, possibly with recognition errors or several languages mixed.
@@ -11,12 +12,13 @@ Reply with ONLY this JSON object, no markdown, no commentary:
 
 Rules:
 - intent "entry": one or MORE customers took goods on udhaar (type "credit") or paid money back (type "payment"). Put every one in "entries", in spoken order. Also copy the first entry into customer/amount/type.
-  credit cues: udhaar liya, udhar, le gaye, baaki likh do, ne liya, ko udhaar diya, on credit, kadan, appu, sala, dhar, baki.
+  credit cues: udhaar liya, udhar, le gaye, baaki likh do, ne liya, ko udhaar diya, on credit, kadan, kadan vaangi (borrowed), appu, sala, dhar, baki, borrowed, loan, took on credit.
   payment cues: wapas diye, chuka diye, jama kiya, de diye, paid, returned, thirumbi, tirigi, vapas, ferat, fira.
   "Sunita ne pachaas wapas diye" = payment 50. "Ramesh ne do sau ka udhaar liya" = credit 200. "Ramesh 200 udhaar, Sunita 50 wapas" = two entries.
 - intent "balance_query": asks how much a customer owes ("Ramesh ka kitna baaki hai?"). Put the name in "customer", entries = []. If they ask about everybody ("total kitna baaki hai", "who owes me"), customer = null.
 - intent "undo": asks to delete/cancel the last entry ("last wala hatao", "undo", "cancel that").
 - intent "correction": fixes the last entry ("galat, 300 tha", "sorry, it was 300", "actually payment"). Put the corrected amount in "amount" (null if unchanged) and "type" (null if unchanged); entries = [].
+- If a name and an amount are present and the customer took something or paid something, it is an entry, whatever the language.
 - intent "unknown": anything else, or customer/amount missing.
 - "customer": the person's name as spoken, ALWAYS romanised in Latin script, Title Case. Drop honorifics (ji, bhai, anna, amma, madam, sahab).
 - "amount": plain number of rupees. Convert number words from any language, e.g. ek=1, do=2, paanch=5, das=10, bees=20, pachaas=50, sau=100, derh sau=150, do sau=200, dhai sau=250, teen sau=300, saade teen sau=350, paanch sau=500, hazaar=1000, dhai hazaar=2500; Tamil nooru=100, irunooru=200, aimbadhu=50; Telugu noora=100, renduvandalu=200, veyyi=1000; Marathi pannas=50, donshe=200; Kannada nooru=100, aivattu=50; Bengali ek sho=100, poncash=50; Gujarati so=100, pachas=50; Punjabi sau=100, pachaas=50; Malayalam nooru=100, aimbathu=50. Digits stay as digits.`
@@ -48,8 +50,9 @@ const SAY = {
   remind: 'Write a polite, friendly payment reminder message from a shopkeeper to customer {name}, saying {amount} rupees is pending and asking them to pay when convenient. Two short sentences, no emojis.',
 }
 
+// Text/vision LLM call. Anthropic (Claude) when ANTHROPIC_API_KEY is set, otherwise Gemini as the engine.
 async function claude({ system, content, max_tokens = 400 }) {
-  if (!process.env.ANTHROPIC_API_KEY) throw Object.assign(new Error('ANTHROPIC_API_KEY is not set in .env'), { status: 500 })
+  if (!process.env.ANTHROPIC_API_KEY) return gemini({ system, content })
   const r = await fetch(`${process.env.ANTHROPIC_BASE_URL || 'https://api.anthropic.com'}/v1/messages`, {
     method: 'POST',
     headers: { 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
@@ -59,6 +62,25 @@ async function claude({ system, content, max_tokens = 400 }) {
   const data = await r.json()
   if (!r.ok) throw Object.assign(new Error(data?.error?.message || `Anthropic HTTP ${r.status}`), { status: 502 })
   return (data.content || []).map((b) => b.text || '').join('')
+}
+
+async function gemini({ system, content }) {
+  if (!process.env.GEMINI_API_KEY) throw Object.assign(new Error('Set ANTHROPIC_API_KEY or GEMINI_API_KEY in .env'), { status: 500 })
+  const parts = typeof content === 'string' ? [{ text: content }]
+    : content.map((c) => (c.type === 'image' ? { inlineData: { mimeType: c.source.media_type, data: c.source.data } } : { text: c.text }))
+  const r = await fetch(`${process.env.GEMINI_BASE_URL || 'https://generativelanguage.googleapis.com'}/v1beta/models/${GEMINI_MODEL}:generateContent`, {
+    method: 'POST',
+    headers: { 'x-goog-api-key': process.env.GEMINI_API_KEY, 'content-type': 'application/json' },
+    body: JSON.stringify({
+      systemInstruction: { parts: [{ text: system }] },
+      contents: [{ role: 'user', parts }],
+      generationConfig: { maxOutputTokens: 4096 }, // headroom: thinking tokens share the budget
+    }),
+    signal: AbortSignal.timeout(25000),
+  })
+  const data = await r.json()
+  if (!r.ok) throw Object.assign(new Error(data?.error?.message || `Gemini HTTP ${r.status}`), { status: 502 })
+  return (data.candidates?.[0]?.content?.parts || []).map((x) => x.text || '').join('')
 }
 
 function parseJson(text) {
@@ -146,7 +168,6 @@ route('/api/scan', async (b) => {
 })
 
 // Any-language speech-to-text: audio -> Gemini -> {text, lang}. Optional; the app falls back to Chrome speech.
-const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-3.6-flash'
 const CODES = 'hi-IN en-IN bn-IN gu-IN pa-guru-IN mr-IN ta-IN te-IN kn-IN ml-IN ur-IN ne-NP si-LK en-US es-ES fr-FR pt-BR ar-SA id-ID sw-KE fil-PH vi-VN th-TH tr-TR ru-RU de-DE ja-JP zh-CN'
 
 app.get('/api/config', (_req, res) => res.json({ gemini: !!process.env.GEMINI_API_KEY }))
