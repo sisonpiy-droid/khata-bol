@@ -1,0 +1,10 @@
+{
+  "name": "Khata Bol",
+  "short_name": "Khata Bol",
+  "description": "Voice-only udhaar ledger in any language",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#FBF6EA",
+  "theme_color": "#FBF6EA",
+  "icons": [{ "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }]
+}
