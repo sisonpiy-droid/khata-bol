@@ -18,6 +18,10 @@ Open **http://localhost:5173 in Chrome**, allow the microphone, click "Load samp
 
 ## Features
 
+- **Auto-demo**: one tap runs a scripted pitch (credit, multi-payment, ambiguous name, balance, total, undo) through the real pipeline, no mic needed. The stage failsafe.
+- **Khata score**: per-customer 5-100 score and suggested credit limit from repayment history (FIFO matching of payments to credits); warns before you exceed it.
+- **Dashboard**: outstanding, overdue 14d+, who owes you, recent activity; khata-style ledger page per customer; WhatsApp reminder and statement; CSV export; installable (add to home screen).
+- **How it works** (sparkle button): live Heard / Understood / Matched / Saved strip with the raw JSON.
 - **Any-language voice (optional)**: add `GEMINI_API_KEY` to `.env` and the mic records audio, Gemini transcribes it in any language (even mixed) and detects which one, and replies switch to that language automatically ("🌐 Auto-detect"). Without the key, or if Gemini fails, it falls back to Chrome speech.
 - **Any language**: 28 languages in the picker (anything Chrome can recognise). Claude parses any script/number words; spoken replies for languages without a built-in template are written by Claude and cached.
 - **Multi-entry**: "Ramesh 200 udhaar, Sunita 50 wapas" in one breath, one confirmation.
