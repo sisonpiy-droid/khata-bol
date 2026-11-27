@@ -31,10 +31,18 @@ Automated tests and a simulated-recognizer run prove the logic and the listen �
 | Stay silent for ~8 s when asked a question | "Maaf kijiye, dobara boliye." then listens again once |
 | Mumble or speak in loud noise | Words shown; if Chrome is unsure it asks you to repeat instead of guessing |
 | "Pichhli entry galat thi" → "haan" | Reversal added; original stays in history, marked reversed |
+| "Ramesh ne 200 diye" | Asks "payment mili ya udhaar diya?" (two buttons); say "payment" or tap. Never guessed |
+| "Nahi, paanch sau nahi, teen sau" on a pending entry | Amount becomes 300 |
+| "Kal wale 300 cancel kar do" (after a 300 entry made yesterday, or any 300 entry today with "aaj wale") | Asks to reverse that entry; "haan" reverses it |
+| "Ramesh ne 200 wapas diye" when Ramesh owes less | Warns that the excess becomes an advance, asks before saving |
+| "Ab total batao" / "Total kitna baaki hai?" | This customer's balance / everyone's total |
 
 ## D. Failure handling
 - Block the microphone (lock icon → Microphone → Block), tap mic: clear instructions appear; allow and reload fixes it.
 - Turn off Wi-Fi, then speak a command: "server se connect nahi ho paaya. Kuch save nahi hua." plus **Try again**; nothing is saved. Turn Wi-Fi on, tap **Try again**: it works once.
+- With a question pending, refresh the page: the card returns without any speech; tap Confirm or the mic to continue.
+- With a question pending, switch to another tab for 10 s and back: the mic and voice stopped; nothing was saved; the card is still there.
+- Switch language (हिन्दी ↔ English) while a question is pending: it is asked again in the new language; nothing is saved by switching.
 - Open the site in a second browser profile: it starts at its own ₹0 demo (visitors are separate).
 
 ## E. Languages

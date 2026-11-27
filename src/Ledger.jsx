@@ -30,7 +30,8 @@ export default function Ledger({ data, onReverse }) {
   const [sel, setSel] = useState(null)
   const [rows, setRows] = useState([])
   useEffect(() => { if (sel) api.history(sel.id).then(setRows).catch(() => setRows([])) }, [sel, data])
-  const customers = [...data.customers].sort((a, b) => b.balance_paise - a.balance_paise)
+  const [q, setQ] = useState('')
+  const customers = [...data.customers].filter((c) => c.name.toLowerCase().includes(q.trim().toLowerCase())).sort((a, b) => b.balance_paise - a.balance_paise)
 
   if (sel) {
     const c = data.customers.find((x) => x.id === sel.id) ?? sel
@@ -50,6 +51,11 @@ export default function Ledger({ data, onReverse }) {
   return (
     <div className="max-w-2xl mx-auto flex flex-col gap-3">
       <h2 className="font-display text-3xl font-extrabold">Customers</h2>
+      <label className="flex items-center gap-2 bg-card border border-line rounded-2xl px-4 min-h-12">
+        <Icon n="search" className="w-5 h-5 text-muted shrink-0" />
+        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search by name" aria-label="Search customers" className="flex-1 min-w-0 bg-transparent py-3 outline-none" />
+      </label>
+      {!customers.length && <Card className="text-center text-muted py-8">{data.customers.length ? 'No customer with that name.' : 'No customers yet. Say an entry, for example “Ramesh ko 500 rupaye udhaar diye”.'}</Card>}
       {customers.map((c) => (
         <button key={c.id} onClick={() => setSel(c)} className="flex items-center gap-4 bg-card border border-line rounded-3xl p-4 text-left hover:bg-mint/50 active:scale-[.99] transition">
           <Avatar name={c.name} size="w-12 h-12 text-lg" />

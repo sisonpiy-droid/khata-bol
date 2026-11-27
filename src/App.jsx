@@ -1,154 +1,112 @@
-import { useEffect, useReducer, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { SR, hasVoice, listen, listenAudio, speak } from './lib/speech.js'
-import { api, session as sessionId } from './lib/api.js'
+import { api, session } from './lib/api.js'
 import { LANGS, spokenLang } from './lib/languages.js'
-import { initial, reduce } from './lib/machine.js'
+import { createVoice } from './lib/voice.js'
 import Home from './Home.jsx'
 import Ledger from './Ledger.jsx'
 import { Chip, Icon } from './ui.jsx'
 
-const MSG = {
-  denied: 'Microphone is blocked. Click the lock icon in the address bar, set Microphone to Allow, then reload this page.',
-  'no-speech': "I didn't hear anything. Tap the mic and try again.",
-  'no-mic': 'No microphone was found. Plug in or enable a microphone, or type below.',
-  network: 'Speech recognition needs an internet connection. Check your network, or type below.',
-  lang: 'This browser cannot recognise that language. Choose Hindi or English, or type below.',
-  unsupported: 'This browser has no speech recognition. Please use Chrome, or type below.',
-  other: 'Speech recognition failed. Try again, or type below.',
+const EMPTY = { shop: { name: '' }, stats: { outstanding_paise: 0, owing_count: 0 }, customers: [], recent: [], today: { credit_paise: 0, payment_paise: 0 } }
+const IDLE = { mode: 'idle', dlg: 'idle', heard: null, interim: '', reply: null, err: null, canRetry: false, pid: null }
+
+const store = {
+  get: (k) => { try { return localStorage.getItem(k) } catch { return null } },
+  set: (k, v) => { try { localStorage.setItem(k, v) } catch { /* private mode: preferences just won't persist */ } },
 }
-const OFFLINE = 'Maaf kijiye, server se connect nahi ho paaya. Kuch save nahi hua.'
-const AGAIN = 'Maaf kijiye, dobara boliye.'
-const LOW_CONFIDENCE = 0.45 // below this the words are probably wrong: ask again instead of guessing
-const ECHO_TAIL_MS = 450 // let the speaker go quiet before opening the mic
+const savedLang = () => { const l = store.get('khata.lang'); return LANGS.some((x) => x.code === l) ? l : 'hi-IN' }
 
 export default function App() {
-  const [data, setData] = useState({ shop: { name: '' }, stats: { outstanding_paise: 0, owing_count: 0 }, customers: [], recent: [], today: { credit_paise: 0, payment_paise: 0 } })
+  const [data, setData] = useState(null) // null = still loading
   const [cfg, setCfg] = useState({ shop: '', demo: false, ai: false, stt: false })
-  const [vm, setVm] = useState(initial)
-  const [, force] = useReducer((x) => x + 1, 0)
-  const [lang, setLang] = useState('hi-IN')
+  const [lang, setLangState] = useState(savedLang)
   const [tab, setTab] = useState('home')
-  const [heard, setHeard] = useState(null)
-  const [reply, setReply] = useState(null)
-  const [interim, setInterim] = useState('')
-  const [err, setErr] = useState(null)
+  const [v, setV] = useState(IDLE)
   const [typed, setTyped] = useState('')
-  const [retry, setRetry] = useState(null)
+  const [online, setOnline] = useState(navigator.onLine)
+  const [voiceOk, setVoiceOk] = useState(true)
   const [knVoice, setKnVoice] = useState(false)
-  const vmRef = useRef(initial)
+  const [showTips, setShowTips] = useState(() => store.get('khata.tips') !== 'done')
   const langRef = useRef(lang)
   const sttRef = useRef(false) // Gemini audio recognizer available and healthy
-  const stopRef = useRef(null)
   const knVoiceRef = useRef(false)
-  const session = sessionId
+  const ctl = useRef(null)
   langRef.current = lang
 
-  const send = (e) => { const n = reduce(vmRef.current, e); vmRef.current = n; setVm(n); return n }
   // Recognition language is what the user speaks; reply language is one this device can actually speak.
   const replyLang = () => (langRef.current.startsWith('kn') && !knVoiceRef.current ? 'hi-IN' : langRef.current)
-  const say = (t) => speak(t, spokenLang(replyLang()))
-  const quiet = () => new Promise((r) => setTimeout(r, ECHO_TAIL_MS))
   const refresh = () => api.state().then(setData).catch(() => {})
+
+  if (!ctl.current) {
+    ctl.current = createVoice({
+      converse: (body) => api.converse({ session, ...body }),
+      listen: (l, onInterim) => {
+        if (!sttRef.current) return listen(l, onInterim)
+        const g = listenAudio(onInterim)
+        return { stop: g.stop, promise: g.promise.catch((e) => { if (e.message === 'server') { sttRef.current = false; throw new Error('other') } throw e }) }
+      },
+      speak: (text) => speak(text, spokenLang(replyLang())),
+      cancelSpeech: () => window.speechSynthesis?.cancel(),
+      getLang: () => langRef.current,
+      getReplyLang: replyLang,
+      supported: () => !!SR || sttRef.current,
+      sleep: (ms) => new Promise((r) => setTimeout(r, ms)),
+      hidden: () => document.hidden,
+      refresh,
+      onChange: setV,
+    })
+  }
+  const voice = ctl.current
 
   useEffect(() => {
     refresh()
+    api.config().then((c) => { setCfg(c); sttRef.current = c.stt }).catch(() => {})
     hasVoice('kn-IN').then((ok) => { knVoiceRef.current = ok; setKnVoice(ok) })
-    api.config().then((c) => { setCfg(c); sttRef.current = c.stt; force() }).catch(() => setErr(OFFLINE))
-  }, [])
-
-  // The app greets once, on the first touch (browsers only allow speech after a user gesture).
-  useEffect(() => {
+    Promise.all([hasVoice('hi-IN'), hasVoice('en-IN')]).then(([a, b]) => setVoiceOk(a || b))
+    voice.resume() // an unfinished entry survives a page refresh
+    const hide = () => document.hidden && voice.hidden() // a background tab must not keep the microphone or voice running
+    const up = () => { setOnline(true); refresh() }, down = () => setOnline(false)
+    document.addEventListener('visibilitychange', hide)
+    window.addEventListener('online', up); window.addEventListener('offline', down)
+    // The app greets once, on the first touch (browsers only allow speech after a user gesture).
     const greet = (e) => {
       if (e.target.closest?.('[data-mic]')) return
       window.removeEventListener('pointerdown', greet); window.removeEventListener('keydown', greet)
-      api.converse({ session, action: 'greet', lang: langRef.current, reply: replyLang() }).then((r) => say(r.say)).catch(() => {})
+      api.converse({ session, action: 'greet', lang: langRef.current, reply: replyLang() }).then((r) => speak(r.say, spokenLang(replyLang()))).catch(() => {})
     }
     window.addEventListener('pointerdown', greet); window.addEventListener('keydown', greet)
-    return () => { window.removeEventListener('pointerdown', greet); window.removeEventListener('keydown', greet) }
+    return () => {
+      voice.dispose()
+      document.removeEventListener('visibilitychange', hide)
+      window.removeEventListener('online', up); window.removeEventListener('offline', down)
+      window.removeEventListener('pointerdown', greet); window.removeEventListener('keydown', greet)
+    }
   }, [])
 
-  const hear = () => {
-    if (!sttRef.current) return listen(langRef.current, setInterim)
-    const l = listenAudio(setInterim)
-    return { stop: l.stop, promise: l.promise.catch((e) => { if (e.message === 'server') { sttRef.current = false; e = new Error('other') } throw e }) }
-  }
-
-  function interrupt() {
-    speechSynthesis.cancel(); stopRef.current?.()
-    if (['speaking', 'listening'].includes(vmRef.current.name)) send({ type: 'STOP' })
-  }
-
-  async function turn(body, typedInput = false) {
-    if (['processing', 'saving'].includes(vmRef.current.name)) return // one request at a time: no double-submit
-    const voice = !typedInput && !body.action // a spoken turn arrives while we are in 'listening'; taps interrupt whatever is going on
-    if (!voice) interrupt()
-    send({ type: voice ? 'HEARD' : body.action === 'confirm' ? 'CONFIRM' : 'TYPED' })
-    if (vmRef.current.name !== 'processing' && vmRef.current.name !== 'saving') return
-    if (body.text != null) setHeard(body.text)
-    setErr(null); setRetry(null)
-    let r
-    try {
-      r = await api.converse({ session, lang: langRef.current, reply: replyLang(), ...body })
-    } catch {
-      send({ type: 'FAIL' }); setErr(OFFLINE) // never pretend it was saved
-      setRetry({ body, typedInput: typedInput || voice }) // same body, same idempotency key: safe to repeat
-      send({ type: 'STOP' }); return say(OFFLINE)
-    }
-    setReply(r); send({ type: 'REPLY', next: r.state }); refresh()
-    await say(r.say)
-    if (vmRef.current.name !== 'speaking') return // interrupted by a tap: the new action owns the state now
-    send({ type: 'SPOKEN' })
-    if (r.expect) { await quiet(); if (vmRef.current.name === r.state) listenOnce(0) } // the app asked a question: listen for the answer, once its own voice has stopped
-  }
-
-  async function listenOnce(attempt = 0) {
-    if (!SR && !sttRef.current) return setErr(MSG.unsupported)
-    speechSynthesis.cancel()
-    if (send({ type: 'LISTEN' }).name !== 'listening') return
-    setInterim(''); setErr(null)
-    const l = hear(); stopRef.current = l.stop
-    try {
-      const { text, confidence } = await l.promise
-      if (confidence != null && confidence < LOW_CONFIDENCE && attempt < 1) { // probably misheard: show it, never act on it
-        setHeard(text); send({ type: 'SAY' }); await say(AGAIN); send({ type: 'SPOKEN' }); await quiet()
-        return vmRef.current.name === vmRef.current.dlg ? listenOnce(attempt + 1) : undefined
-      }
-      turn({ text })
-    } catch (e) {
-      if (e.message === 'aborted') return
-      if (e.message === 'no-speech' && vmRef.current.dlg !== 'idle' && attempt < 1) {
-        send({ type: 'SAY' }); await say(AGAIN); send({ type: 'SPOKEN' }); await quiet()
-        return listenOnce(attempt + 1)
-      }
-      send({ type: 'FAIL' }); setErr(MSG[e.message] ?? MSG.other)
-    }
-  }
+  const setLang = (l) => { langRef.current = l; setLangState(l); store.set('khata.lang', l); voice.languageChanged() }
 
   const actions = {
-    mic: () => {
-      const n = vmRef.current.name
-      if (n === 'listening') { stopRef.current?.(); return send({ type: 'STOP' }) }
-      if (['processing', 'saving'].includes(n)) return
-      if (n === 'speaking') interrupt() // talk over the app: stop its voice, then listen
-      listenOnce(0)
-    },
-    retry: () => { const r = retry; if (r) { setRetry(null); turn(r.body, r.typedInput) } },
-    typed: () => { const t = typed.trim(); if (t) { setTyped(''); turn({ text: t }, true) } },
-    say: (t) => turn({ text: t }, true),
-    confirm: () => turn({ action: 'confirm' }),
-    cancel: () => turn({ action: 'cancel' }, true),
-    choose: (id) => turn({ action: 'choose', choice: id }, true),
-    reverse: (txnId) => { setTab('home'); turn({ action: 'reverse', txnId }, true) },
+    mic: () => voice.tapMic(),
+    typed: () => { const t = typed.trim(); if (t) { setTyped(''); voice.submitText(t) } },
+    say: (t) => voice.submitText(t),
+    confirm: () => voice.confirm(),
+    cancel: () => voice.cancel(),
+    choose: (id) => voice.choose(id),
+    chooseType: (t) => voice.chooseType(t),
+    reverse: (txnId) => { setTab('home'); voice.reverse(txnId) },
+    retry: () => voice.retry(),
     reset: async () => {
-      if (!confirm('Reset demo data? This restores the sample shop and removes entries made during the demo.')) return
-      try { await api.resetDemo(); setReply(null); setHeard(null); setErr(null); refresh() } catch (e) { setErr(e.message) }
+      if (!confirm('Reset demo data? This restores the sample shop and removes entries made in this demo.')) return
+      try { await api.resetDemo(); voice.clear(); refresh() } catch { /* the banner/err state covers connectivity */ }
     },
   }
+  const tips = { show: showTips && !v.reply, dismiss: () => { store.set('khata.tips', 'done'); setShowTips(false) } }
 
   const level = LANGS.find((l) => l.code === lang)?.level
   const hint = lang.startsWith('kn')
     ? `ಕನ್ನಡ beta: basic phrases work without a key. ${knVoice ? 'Replies are spoken in Kannada.' : 'This device has no Kannada voice, so replies are spoken in Hinglish.'} Not yet verified with native speakers.`
     : level === 'beta' && !cfg.ai ? `${LANGS.find((l) => l.code === lang).label}: Chrome can hear it, but understanding it needs AI enhancement, which is not configured. Hindi and English work fully without any key.` : null
+  const nav = [['home', 'Speak', 'mic'], ['ledger', 'Customers', 'users']]
 
   return (
     <div className="min-h-dvh flex flex-col">
@@ -159,29 +117,38 @@ export default function App() {
             <span className="leading-none"><span className="block font-display text-2xl font-extrabold">Khata Bol</span><span className="text-[11px] font-bold tracking-widest text-muted uppercase">खाता बोल</span></span>
           </button>
           <nav className="hidden sm:flex gap-1 bg-card border border-line rounded-full p-1" aria-label="Sections">
-            {[['home', 'Speak', 'mic'], ['ledger', 'Customers', 'users']].map(([v, l, ic]) => (
-              <button key={v} onClick={() => setTab(v)} aria-current={tab === v} className={`inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-bold ${tab === v ? 'bg-forest text-white' : 'text-forest hover:bg-mint'}`}><Icon n={ic} className="w-4 h-4" />{l}</button>
+            {nav.map(([id, l, ic]) => (
+              <button key={id} onClick={() => setTab(id)} aria-current={tab === id} className={`inline-flex items-center gap-2 rounded-full px-4 min-h-11 text-sm font-bold ${tab === id ? 'bg-forest text-white' : 'text-forest hover:bg-mint'}`}><Icon n={ic} className="w-4 h-4" />{l}</button>
             ))}
           </nav>
         </div>
       </header>
 
+      {!online && (
+        <div role="alert" className="bg-ink text-paper text-sm font-semibold py-2 px-4 text-center">
+          Internet band hai · No internet. Khata Bol cannot work offline: voice recognition and saving both need a connection. Your saved entries are safe on the server.
+        </div>
+      )}
+      {!SR && !cfg.stt && (
+        <div className="bg-brick text-white text-center text-sm font-semibold py-2 px-4">Speech recognition needs Chrome. You can still type below.</div>
+      )}
+
       <main className="flex-1 w-full max-w-6xl mx-auto px-4 py-6 pb-28 sm:pb-10">
         {tab === 'home' ? (
           <>
             <div className="mb-6 flex flex-wrap items-center gap-x-4 gap-y-2">
-              <h1 className="font-display text-3xl sm:text-4xl font-extrabold">Namaste 🙏 <span className="text-forest">{cfg.shop || data.shop.name}</span></h1>
+              <h1 className="font-display text-3xl sm:text-4xl font-extrabold">Namaste 🙏 <span className="text-forest">{cfg.shop || data?.shop?.name}</span></h1>
               {cfg.demo && <Chip tone="warn">Demo shop · synthetic data</Chip>}
               {!cfg.ai && <Chip>AI enhancement not configured · keyless parser active</Chip>}
             </div>
-            <Home data={data} cfg={cfg} mode={vm.name} dlg={vm.dlg} heard={heard} interim={interim} reply={reply} err={err} canRetry={!!retry} hint={hint} typed={typed} setTyped={setTyped} lang={lang} setLang={(l) => { langRef.current = l; setLang(l) }} actions={actions} />
+            <Home data={data ?? EMPTY} loading={!data} cfg={cfg} v={v} hint={hint} typed={typed} setTyped={setTyped} lang={lang} setLang={setLang} tips={tips} voiceOk={voiceOk} actions={actions} />
           </>
-        ) : <Ledger data={data} onReverse={actions.reverse} />}
+        ) : <Ledger data={data ?? EMPTY} onReverse={actions.reverse} />}
       </main>
 
       <nav className="sm:hidden fixed bottom-0 inset-x-0 z-20 bg-paper/95 backdrop-blur border-t border-line grid grid-cols-2 pb-[env(safe-area-inset-bottom)]" aria-label="Sections">
-        {[['home', 'Speak', 'mic'], ['ledger', 'Customers', 'users']].map(([v, l, ic]) => (
-          <button key={v} onClick={() => setTab(v)} aria-current={tab === v} className={`flex flex-col items-center gap-0.5 py-3 text-xs font-bold ${tab === v ? 'text-forest' : 'text-muted'}`}><Icon n={ic} className="w-6 h-6" />{l}</button>
+        {nav.map(([id, l, ic]) => (
+          <button key={id} onClick={() => setTab(id)} aria-current={tab === id} className={`flex flex-col items-center justify-center gap-0.5 min-h-16 text-xs font-bold ${tab === id ? 'text-forest' : 'text-muted'}`}><Icon n={ic} className="w-6 h-6" />{l}</button>
         ))}
       </nav>
     </div>

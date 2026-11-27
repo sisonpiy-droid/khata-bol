@@ -14,7 +14,7 @@ No `.env` and no API keys are needed. Without Docker:
 ```bash
 npm install
 npm run dev              # app on http://localhost:5173, API on :8787 (Node 22.13+)
-npm test                 # 30 backend and state-machine tests
+npm test                 # 65 tests: ledger, dialogue, security, voice loop (simulated recognizer)
 ```
 
 Use **Chrome** and allow the microphone. `localhost` counts as secure, so voice works without HTTPS.
@@ -33,6 +33,17 @@ Use **Chrome** and allow the microphone. `localhost` counts as secure, so voice 
 | "Haan, save kar do" / "Nahi" / "Cancel karo" / "Customer Rameshwar hai" | Confirm, cancel, or switch customer |
 | "Pichhli entry galat thi" | Asks, then adds a linked **reversal**; history is never deleted |
 | "Aaj ka hisaab batao" | Today's real credit given and payments received |
+
+Informal talk works too: "Ramesh ko 500 ka samaan diya", "Ab total batao" (this customer) vs "Total kitna baaki hai?" (everyone), "Aaj kitna udhaar diya?", "Nahi, paanch sau nahi, teen sau" (the last amount wins), "Kal wale 300 cancel kar do" (reverses that entry after confirmation), "Rameshwar ko add karo" (adds a customer after confirmation).
+
+## Product rules (all tested)
+- **Nothing is saved without an explicit yes** for the entry just read back. The yes carries that entry's id, so an answer to an old question can never confirm a newer one.
+- **Uncertain means ask.** "Ramesh ne 200 diye" gives no direction, so it asks "payment mili ya udhaar diya?" instead of assuming. A name that is only *close* to an existing customer ("Kavya" vs "Kavita") asks: existing customer or new? Identical names are shown with what each owes and must be chosen.
+- **Overpayment rule:** a repayment larger than what the customer owes is allowed only after an explicit warning ("sirf 800 baaki hain, baaki 200 advance ban jayenge") and a yes; the excess is stored as an advance (negative balance). It is never rejected silently or saved silently.
+- **Large amounts (₹5,000+)** are flagged for a second look. Amounts above ₹10,00,000, below ₹1, zero or unparseable are refused before any confirmation.
+- **Duplicates and races:** one request per session runs at a time, the idempotency key is a database UNIQUE constraint, and double taps, two tabs or a network retry save once.
+- **Mistakes are recoverable:** reversals are linked rows (never deleted, never reversed twice, never across customers or visitors).
+- **Refresh, tab switch, language switch:** an unfinished entry returns after a page refresh (silently, no surprise speech); a background tab stops the mic and voice; changing language re-asks in the new language and never saves.
 
 Also works in Devanagari ("रमेश को पाँच सौ रुपये उधार दिए") and English ("Add five hundred credit to Ramesh").
 
@@ -73,10 +84,11 @@ Set `GEMINI_API_KEY` or `ANTHROPIC_API_KEY` (see `.env.example`). Without a key 
 
 ## Status and honest limitations
 
-- Tested automatically (`npm test`, 30 tests): ledger maths, idempotency, reversals, confirmation, cancellation, ambiguity, corrections, context, persistence across restart, startup without keys, visitor isolation, failed database writes, expiry of stale questions, Kannada core phrases.
-- Tested in the browser: the full journey through the real UI loop (tap → listen → read-back → listen → confirm → balance) driven by a **simulated speech recognizer** (this machine has no microphone), including correction, ambiguity, cancel, reversal, low-confidence re-ask, silence re-ask, and the real microphone-denied message. This proves the state machine and echo guard, **not** real recognition.
+- Tested automatically (`npm test`, 65 tests): ledger maths and float safety, idempotency and concurrent confirmations, overpayment, reversals, ambiguity and uncertain names, informal phrases, corrections, stale answers, persistence across restart, startup without keys, visitor isolation and cross-session access attempts, input validation, rate limits, parameterised SQL, failed database writes, expiry, Kannada core phrases, and the **real voice loop** (`src/lib/voice.js`) driven by a simulated recognizer and speaker against the real backend: no mic during speech, interruption, low confidence, silence, permission denied, network retry, double tap, tab hidden, refresh restore, language switch, dispose.
+- Tested in the browser (production build): onboarding, ambiguity card, overpayment warning, refresh restore, language persistence, offline banner, customer search, no console or CSP errors, 375 px layout. The real microphone-denied message was seen in a real browser. The voice loop is driven only by **simulated** recognition because no microphone is available here: this proves state transitions and echo protection, **not** real recognition accuracy.
 - **Needs manual verification** ([docs/VOICE-TEST-CHECKLIST.md](docs/VOICE-TEST-CHECKLIST.md)): real microphone capture and accuracy, spoken replies on each device, Kannada, and `docker compose up` (Docker was not installed on the development machine; the files are standard but unrun).
-- Chrome's speech recognition sends audio to Google and needs internet. Browser voices vary; if a device has no Hindi voice, replies may be read in an English accent.
+- Privacy and security limits are written down in [docs/PRIVACY-SECURITY.md](docs/PRIVACY-SECURITY.md). The anonymous demo-session model is **not** production authentication; there is no encryption at rest and no backup.
+- Chrome's speech recognition sends audio to Google and needs internet; there is no offline mode and the app says so when the connection drops. Browser voices vary; if a device has no Hindi voice, replies may be read in an English accent.
 - Replies are Hinglish (roman script), English, or Kannada (if the device speaks it). Other languages get Hinglish replies.
 - Prototype: one shop, no login, demo data is synthetic. "Reset demo data" only works while the shop is flagged as demo.
 - Public demo: each visitor gets a private demo shop (isolated ledger and conversation). See [RAILWAY.md](RAILWAY.md) to host it with a persistent volume.

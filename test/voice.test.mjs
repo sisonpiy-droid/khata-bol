@@ -84,3 +84,29 @@ test('unparseable Kannada says AI enhancement is needed instead of guessing', as
   const t = fresh()
   assert.match((await talk(t, 'ನಮಸ್ಕಾರ ಹೇಗಿದ್ದೀರಿ', { lang: 'kn-IN' })).say, /AI enhancement/)
 })
+
+// Supported Kannada phrases (parser level, no key). These document what is covered; they are NOT proof that a
+// device recognises or speaks Kannada correctly, and the phrases were written without a native speaker.
+import { parse } from '../server/nlu.js'
+test('Kannada parser: supported phrase table', () => {
+  const cs = [{ id: 1, name: 'Ramesh' }, { id: 2, name: 'Suresh' }]
+  const rows = [
+    ['ರಮೇಶ್ ಗೆ ಐನೂರು ರೂಪಾಯಿ ಸಾಲ ಕೊಟ್ಟೆ', { hasCredit: true, amountPaise: 50000, who: 'Ramesh' }],
+    ['ರಮೇಶ್‌ಗೆ ಇನ್ನೂರು ರೂಪಾಯಿ ಸಾಲ', { hasCredit: true, amountPaise: 20000, who: 'Ramesh' }],
+    ['ಸುರೇಶ್ ಮುನ್ನೂರು ರೂಪಾಯಿ ವಾಪಸ್ ಕೊಟ್ಟರು', { hasPayment: true, amountPaise: 30000, who: 'Suresh' }],
+    ['ರಮೇಶ್ ಅವರ ಬಾಕಿ ಎಷ್ಟು', { isBalance: true, who: 'Ramesh' }],
+    ['ರಮೇಶ್ ಒಂದು ಸಾವಿರ ರೂಪಾಯಿ ಸಾಲ', { hasCredit: true, amountPaise: 100000, who: 'Ramesh' }],
+    ['ಹೌದು', { isYes: true }],
+    ['ಇಲ್ಲ', { isNo: true }],
+    ['ರದ್ದು', { isCancel: true }],
+    ['ಇಲ್ಲ ಮುನ್ನೂರು', { isNo: true, amountPaise: 30000 }],
+    ['ಇಂದಿನ ಲೆಕ್ಕ ಹೇಳಿ', { isSummary: true }],
+  ]
+  for (const [text, want] of rows) {
+    const f = parse(text, cs)
+    for (const [k, v] of Object.entries(want)) {
+      const got = k === 'who' ? f.nameRef?.customer?.name : f[k]
+      assert.equal(got, v, `${text} -> ${k}`)
+    }
+  }
+})
