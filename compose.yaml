@@ -1,0 +1,16 @@
+# docker compose up  ->  http://localhost:8787  (no .env or API keys needed)
+services:
+  khata-bol:
+    build: .
+    ports:
+      - "8787:8787"
+    volumes:
+      - khata-data:/data # SQLite lives here and survives restarts
+    environment:
+      # All optional. Blank means "AI enhancement not configured" and the keyless parser is used.
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+    restart: unless-stopped
+
+volumes:
+  khata-data:

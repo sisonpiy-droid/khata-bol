@@ -1,211 +1,161 @@
-import { Avatar, Btn, Card, Chip, Icon, Orb, ago, inr } from './ui.jsx'
-import { chaseList, portfolio } from './lib/insights.js'
+import { Avatar, Btn, Card, Chip, Icon, Orb, inr } from './ui.jsx'
+import { HistoryRow } from './Ledger.jsx'
 
-const CAPTION = {
-  idle: ['माइक दबाएँ और बोलें', 'Tap the mic and speak'],
-  thinking: ['समझ रहा हूँ…', 'Understanding'],
-  pick: ['कौन सा?', 'Which customer?'],
-  confirm: ['क्या यह सही है?', 'Is this right?'],
-  manual: ['हाथ से लिखें', 'Enter it manually'],
+const STATUS = {
+  idle: ['Tap the mic and speak', 'माइक दबाएँ और बोलें'],
+  listening: ['Listening…', 'सुन रहा हूँ'],
+  processing: ['Understanding…', 'समझ रहा हूँ'],
+  speaking: ['Khata Bol is speaking', 'बोल रहा हूँ'],
+  awaiting_confirmation: ["Say “haan” to confirm or “nahi” to cancel", 'हाँ या नहीं बोलें'],
+  awaiting_clarification: ['Waiting for your answer', 'आपके जवाब का इंतज़ार'],
+  saving: ['Saving…', 'सेव हो रहा है'],
+  error: ['Something went wrong', 'कुछ गड़बड़ हुई'],
 }
+const TRY = ['Ramesh ko 500 rupaye udhaar diye', 'Ramesh ne 200 rupaye wapas diye', 'Ramesh ka kitna baaki hai?', 'Aaj ka hisaab batao']
 
-export default function Home(p) {
-  const { stage, interim, dbg, pending, options, message, hands, demo, data, how } = p
-  const { customers } = data
-  const cap = stage === 'listening' ? [interim || 'सुन रहा हूँ…', 'Listening'] : hands && stage === 'idle' ? ['Hands-free चालू', 'Just speak, I keep listening'] : CAPTION[stage] || CAPTION.idle
-  const showHeard = dbg.transcript && ['thinking', 'pick', 'confirm'].includes(stage)
-
+export default function Home({ data, cfg, mode, dlg, heard, interim, reply, err, hint, typed, setTyped, actions }) {
+  const [s1, s2] = STATUS[mode] ?? STATUS.idle
+  const busy = mode === 'processing' || mode === 'saving'
   return (
-    <div className="grid lg:grid-cols-[minmax(0,1fr)_380px] gap-6 items-start">
+    <div className="grid lg:grid-cols-[minmax(0,1fr)_400px] gap-6 items-start">
       <div className="flex flex-col items-center gap-4">
-        {demo && (
-          <div className="flex items-center gap-3 bg-ink text-paper rounded-full pl-4 pr-2 py-1.5 text-sm font-bold animate-rise">
-            <span className="w-2 h-2 rounded-full bg-saffron animate-pulse" /> Auto-demo running
-            <button onClick={p.onCancel} className="bg-paper/15 hover:bg-paper/25 rounded-full px-3 py-1">Stop</button>
-          </div>
-        )}
-        <Orb stage={stage} hands={hands} onClick={p.onMic} />
-        <div className="text-center min-h-14 max-w-md">
-          <p className="font-display text-2xl sm:text-3xl font-extrabold leading-tight">{cap[0]}</p>
-          {cap[1] && stage !== 'listening' && <p className="text-muted mt-1">{cap[1]}</p>}
+        <Orb mode={mode} onClick={actions.mic} label={mode === 'listening' ? 'Stop listening' : 'Speak to Khata Bol'} />
+        <div className="text-center max-w-md" aria-live="polite">
+          <p className="font-display text-2xl sm:text-3xl font-extrabold leading-tight">{mode === 'listening' && interim ? interim : s1}</p>
+          <p className="text-muted mt-1">{s2}</p>
         </div>
 
-        {showHeard && (
-          <p className="w-full max-w-md text-center bg-card border border-line rounded-2xl px-4 py-3 text-lg text-ink-soft italic animate-rise">
-            “{dbg.transcript}”
+        {hint && <p className="max-w-md text-center text-sm text-amber bg-amber-soft rounded-xl px-3 py-2">{hint}</p>}
+        {err && (
+          <Card role="alert" className="w-full max-w-md !bg-brick-soft !border-brick/20 flex gap-3 items-start animate-rise">
+            <Icon n="alert" className="text-brick shrink-0 mt-0.5" /><p className="font-semibold text-brick">{err}</p>
+          </Card>
+        )}
+
+        {heard && (
+          <p className="w-full max-w-md bg-card border border-line rounded-2xl px-4 py-3 animate-rise">
+            <span className="block text-xs font-bold uppercase tracking-wider text-muted">You said</span>
+            <span className="text-lg">“{heard}”</span>
           </p>
         )}
-
-        {stage === 'pick' && (
-          <Card className="w-full max-w-md animate-rise">
-            <p className="text-sm font-bold text-muted mb-3">कौन सा ग्राहक? Which one?</p>
-            <div className="grid grid-cols-2 gap-3">
-              {options.map((c) => (
-                <button key={c.id} onClick={() => p.onTap(c)} className="flex items-center gap-3 bg-amber-soft hover:brightness-95 rounded-2xl p-3 text-left font-bold text-lg active:scale-95 transition">
-                  <Avatar name={c.name} /> {c.name}
-                </button>
-              ))}
-            </div>
-            <Btn tone="brick" onClick={p.onCancel} className="w-full mt-3"><Icon n="x" /> Cancel</Btn>
-          </Card>
+        {reply && (
+          <div className="w-full max-w-md animate-rise">
+            <p className="bg-forest text-white rounded-2xl rounded-bl-md px-4 py-3 text-lg font-semibold">
+              <span className="block text-xs font-bold uppercase tracking-wider text-white/60">Khata Bol</span>{reply.say}
+            </p>
+            <CardFor card={reply.card} dlg={dlg} busy={busy} actions={actions} />
+          </div>
         )}
 
-        {stage === 'confirm' && pending && (
-          <Card className="w-full max-w-md animate-rise !p-0 overflow-hidden">
-            <div className="flex justify-between items-center px-5 pt-4 pb-2 text-xs font-bold uppercase tracking-wider text-muted">
-              <span>खाता पर्ची · Slip</span><span>{new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}</span>
-            </div>
-            <div className="max-h-72 overflow-auto px-5 divide-y divide-dashed divide-line">
-              {pending.map((e, i) => (
-                <div key={i} className="py-3">
-                  <div className="flex items-center gap-3">
-                    <Avatar name={e.name} />
-                    <div className="min-w-0 flex-1">
-                      <p className="font-display text-xl font-extrabold truncate">{e.name} {e.isNew && <Chip tone="good">NEW</Chip>}</p>
-                      <p className="text-sm text-muted">{e.type === 'credit' ? 'उधार · udhaar' : 'वापस · paid back'}</p>
-                    </div>
-                    <p className={`font-display text-3xl font-extrabold ${e.type === 'credit' ? 'text-brick' : 'text-leaf'}`}>{e.type === 'credit' ? '+' : '−'}{inr(e.amount)}</p>
-                  </div>
-                  {e.warn && (
-                    <p className="mt-2 flex items-start gap-2 bg-amber-soft text-saffron-deep rounded-xl px-3 py-2 text-sm font-semibold">
-                      <Icon n="alert" className="w-4 h-4 mt-0.5 shrink-0" />
-                      <span>Already owes {inr(e.warn.balance)}. Suggested limit {inr(e.warn.limit)}{e.warn.oldestDays >= 7 && `, oldest unpaid ${e.warn.oldestDays} days`}.</span>
-                    </p>
-                  )}
-                </div>
-              ))}
-            </div>
-            <div className="grid grid-cols-[1fr_auto] gap-3 p-4 bg-paper/60 mt-2">
-              <Btn tone="leaf" onClick={() => p.onTap('yes')} className="text-xl py-4"><Icon n="check" className="w-6 h-6" sw={3} /> सही है · Confirm</Btn>
-              <Btn tone="brick" onClick={() => p.onTap('no')} className="py-4" aria-label="Not right"><Icon n="x" className="w-6 h-6" sw={3} /></Btn>
-            </div>
-          </Card>
-        )}
+        <form onSubmit={(e) => { e.preventDefault(); actions.typed() }} className="w-full max-w-md flex gap-2">
+          <label className="flex-1 min-w-0 flex items-center gap-2 bg-card border border-line rounded-2xl px-4">
+            <Icon n="keyboard" className="w-5 h-5 text-muted shrink-0" />
+            <input value={typed} onChange={(e) => setTyped(e.target.value)} placeholder="Or type here (fallback)" aria-label="Type a command"
+              className="flex-1 min-w-0 bg-transparent py-3 outline-none" />
+          </label>
+          <Btn tone="soft" aria-label="Send" disabled={busy} className="!px-4"><Icon n="send" /></Btn>
+        </form>
 
-        {stage === 'manual' && p.manual}
-
-        <div aria-live="polite" className="w-full max-w-md">
-          {message?.text && (
-            <div key={message.text} className={`animate-stamp flex items-start gap-3 rounded-2xl p-4 border ${message.kind === 'ok' ? 'bg-leaf-soft border-leaf/20' : 'bg-brick-soft border-brick/20'}`}>
-              <span className={`mt-0.5 grid place-items-center w-7 h-7 rounded-full text-white shrink-0 ${message.kind === 'ok' ? 'bg-leaf' : 'bg-brick'}`}>
-                <Icon n={message.kind === 'ok' ? 'check' : 'alert'} className="w-4 h-4" sw={3} />
-              </span>
-              <p className="flex-1 text-lg font-semibold leading-snug">{message.text}</p>
-              {message.undo > 0 && (
-                <button onClick={p.onUndo} className="shrink-0 inline-flex items-center gap-1 text-sm font-bold bg-card border border-line rounded-full px-3 py-1.5 hover:bg-amber-soft"><Icon n="undo" className="w-4 h-4" /> Undo</button>
-              )}
-            </div>
-          )}
+        <div className="w-full max-w-md">
+          <p className="text-xs font-bold uppercase tracking-wider text-muted mb-2 text-center">Try saying · tap to run as text</p>
+          <div className="flex flex-wrap justify-center gap-2">
+            {TRY.map((t) => <button key={t} disabled={busy} onClick={() => actions.say(t)} className="text-sm bg-card border border-line rounded-full px-3 py-1.5 hover:bg-mint disabled:opacity-40">“{t}”</button>)}
+          </div>
         </div>
-
-        {stage === 'idle' && (
-          <form onSubmit={(e) => { e.preventDefault(); p.onType() }} className="w-full max-w-md flex gap-2">
-            <input value={p.typed} onChange={(e) => p.setTyped(e.target.value)} placeholder='Or type: "Ramesh ne 200 ka udhaar liya"'
-              className="flex-1 min-w-0 bg-card border border-line rounded-2xl px-4 py-3 text-base placeholder:text-muted/70" />
-            <Btn tone="soft" aria-label="Send" className="!px-4"><Icon n="send" /></Btn>
-          </form>
-        )}
-
-        <div className="flex flex-wrap justify-center gap-2 max-w-md">
-          <Pill icon="headphones" on={hands} onClick={p.toggleHands}>Hands-free</Pill>
-          <Pill icon="camera" disabled={stage !== 'idle'} onClick={p.scan}>Scan khata</Pill>
-          <Pill icon="file" onClick={p.summary}>Summary</Pill>
-          <Pill icon="pen" onClick={p.openManual}>Manual</Pill>
-          <Pill icon="play" onClick={p.runDemo} accent>Auto-demo</Pill>
-        </div>
-
-        {how && (
-          <Card className="w-full max-w-md animate-rise">
-            <div className="flex items-center justify-between gap-1 text-sm font-bold flex-wrap">
-              {[['Heard', !!dbg.transcript], ['Understood', !!dbg.parsed], ['Matched', !!pending || message?.kind === 'ok'], ['Saved', message?.kind === 'ok' && !pending]].map(([l, ok], i) => (
-                <span key={l} className="flex items-center gap-1">
-                  {i > 0 && <span className="w-4 h-px bg-line" />}
-                  <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 ${ok ? 'bg-leaf text-white' : 'bg-paper text-muted'}`}>{ok && <Icon n="check" className="w-3.5 h-3.5" sw={3} />}{l}</span>
-                </span>
-              ))}
-            </div>
-            <pre className="mt-3 bg-ink text-leaf-soft rounded-xl p-3 text-xs overflow-auto whitespace-pre-wrap max-h-52">{JSON.stringify({ lang: p.lang, engine: p.engine, ...dbg }, null, 2)}</pre>
-          </Card>
-        )}
       </div>
 
       <aside className="flex flex-col gap-4">
-        {!customers.length ? <Welcome {...p} /> : <Dashboard data={data} open={p.openCustomer} />}
+        <div className="grid grid-cols-2 gap-3">
+          <Stat big label="Total outstanding" value={inr(data.stats.outstanding_paise)} />
+          <Stat label="Customers with dues" value={data.stats.owing_count} />
+          <Stat label="Credit given today" value={inr(data.today.credit_paise)} tone="text-brick" />
+          <Stat label="Payments today" value={inr(data.today.payment_paise)} tone="text-forest" />
+        </div>
+        <Card>
+          <div className="flex items-center justify-between mb-1">
+            <h3 className="font-display text-lg font-extrabold">Recent entries</h3>
+            {cfg.demo && <button onClick={actions.reset} className="inline-flex items-center gap-1 text-xs font-bold text-muted hover:text-brick"><Icon n="refresh" className="w-3.5 h-3.5" /> Reset demo data</button>}
+          </div>
+          <ul className="divide-y divide-line">{data.recent.slice(0, 8).map((r) => <HistoryRow key={r.id} row={r} onReverse={actions.reverse} />)}</ul>
+          {!data.recent.length && <p className="text-muted py-3">No entries yet. Press the mic and say one.</p>}
+        </Card>
       </aside>
     </div>
   )
 }
 
-const Pill = ({ icon, on, accent, children, ...p }) => (
-  <button {...p} className={`inline-flex items-center gap-2 rounded-full px-4 py-2.5 text-sm font-bold border transition active:scale-95 disabled:opacity-40 ${
-    on ? 'bg-leaf text-white border-leaf' : accent ? 'bg-ink text-paper border-ink' : 'bg-card border-line hover:bg-amber-soft'}`}>
-    <Icon n={icon} className="w-4 h-4" /> {children}
-  </button>
+const Stat = ({ label, value, big, tone = '' }) => (
+  <div className={`${big ? 'col-span-2 bg-forest text-white' : 'bg-card border border-line'} rounded-2xl p-4`}>
+    <p className={`text-[11px] font-bold uppercase tracking-wide ${big ? 'text-white/70' : 'text-muted'}`}>{label}</p>
+    <p className={`font-display ${big ? 'text-4xl' : 'text-2xl'} font-extrabold leading-tight mt-0.5 ${tone}`}>{value}</p>
+  </div>
 )
 
-function Welcome(p) {
+function Decision({ busy, actions, yes = 'Confirm · सही है', no = 'Cancel' }) {
   return (
-    <Card>
-      <h2 className="font-display text-2xl font-extrabold">Namaste! 🙏</h2>
-      <p className="text-muted mt-1">Speak your khata. No typing, in your language.</p>
-      <ol className="mt-4 space-y-3">
-        {[['mic', 'Tap the mic and say "Ramesh ne do sau ka udhaar liya"'], ['check', 'I read it back. Say "haan" or tap Confirm'], ['send', 'Send a polite WhatsApp reminder in one tap']].map(([ic, t], i) => (
-          <li key={i} className="flex items-center gap-3"><span className="grid place-items-center w-9 h-9 rounded-full bg-amber-soft text-saffron-deep shrink-0"><Icon n={ic} className="w-4 h-4" /></span><span className="font-medium">{t}</span></li>
+    <div className="grid grid-cols-[1fr_auto] gap-3 mt-3">
+      <Btn onClick={actions.confirm} disabled={busy} className="text-xl py-4"><Icon n="check" className="w-6 h-6" sw={3} /> {yes}</Btn>
+      <Btn tone="brick" onClick={actions.cancel} disabled={busy} className="py-4" aria-label={no}><Icon n="x" className="w-6 h-6" sw={3} /></Btn>
+    </div>
+  )
+}
+
+function CardFor({ card, dlg, busy, actions }) {
+  if (!card) return null
+  const credit = card.type === 'credit'
+  const wrap = 'mt-3 animate-rise'
+  if (card.kind === 'pending') return (
+    <Card className={wrap}>
+      <div className="flex items-center gap-3">
+        <Avatar name={card.customer.name} />
+        <div className="flex-1 min-w-0"><p className="font-display text-2xl font-extrabold truncate">{card.customer.name} {card.customer.isNew && <Chip tone="good">NEW</Chip>}</p>
+          <Chip tone={credit ? 'bad' : 'good'}>{credit ? 'Credit · udhaar' : 'Repayment'}</Chip></div>
+        <p className={`font-display text-4xl font-extrabold ${credit ? 'text-brick' : 'text-forest'}`}>{credit ? '+' : '−'}{inr(card.amount_paise)}</p>
+      </div>
+      <p className="text-sm text-muted mt-3">Balance {inr(card.customer.balance_paise)} → <b className="text-ink">{inr(card.after_paise)}</b></p>
+      <Decision busy={busy} actions={actions} />
+    </Card>
+  )
+  if (card.kind === 'choice') return (
+    <Card className={wrap}>
+      <p className="text-sm font-bold text-muted mb-3">Which customer? {card.amount_paise ? <>({credit ? 'credit' : 'repayment'} {inr(card.amount_paise)} kept)</> : null}</p>
+      <div className="grid grid-cols-2 gap-3">
+        {card.options.map((c) => (
+          <button key={c.id} onClick={() => actions.choose(c.id)} disabled={busy} className="flex items-center gap-3 bg-mint hover:brightness-95 rounded-2xl p-3 text-left font-bold text-lg active:scale-95 transition disabled:opacity-40"><Avatar name={c.name} />{c.name}</button>
         ))}
-      </ol>
-      <div className="grid gap-2 mt-5">
-        <Btn tone="ink" onClick={p.runDemo}><Icon n="play" /> Watch the auto-demo</Btn>
-        <Btn tone="soft" onClick={p.seed}><Icon n="sprout" /> Load a sample shop</Btn>
-        <Btn tone="soft" onClick={p.scan}><Icon n="camera" /> Scan my paper khata</Btn>
+      </div>
+      <Btn tone="brick" onClick={actions.cancel} disabled={busy} className="w-full mt-3"><Icon n="x" /> Cancel</Btn>
+    </Card>
+  )
+  if (card.kind === 'reversal') return (
+    <Card className={wrap}>
+      <Chip tone="warn">Reverse an entry</Chip>
+      <p className="mt-2 text-lg"><b>{card.entry.customer_name}</b> · {card.entry.type === 'credit' ? 'credit' : 'payment'} <b>{inr(card.entry.amount_paise)}</b></p>
+      <p className="text-sm text-muted">A linked reversal is added. The original stays in history.</p>
+      <Decision busy={busy} actions={actions} yes="Reverse it" />
+    </Card>
+  )
+  if (card.kind === 'saved') return (
+    <Card className={`${wrap} animate-stamp !bg-mint !border-forest/20`}>
+      <div className="flex items-center gap-3">
+        <span className="w-10 h-10 rounded-full bg-forest text-white grid place-items-center"><Icon n="check" sw={3} /></span>
+        <div className="flex-1"><p className="font-bold">{card.duplicate ? 'Already saved' : card.reversal ? 'Reversed' : 'Saved'} · {card.customer.name}</p>
+          {card.amount_paise && <p className="text-sm text-muted">{credit ? 'Credit' : 'Payment'} {inr(card.amount_paise)}</p>}</div>
+        <div className="text-right"><p className="text-xs text-muted">Balance now</p><p className="font-display text-2xl font-extrabold">{inr(card.balance_paise)}</p></div>
       </div>
     </Card>
   )
-}
-
-function Dashboard({ data, open }) {
-  const { customers, txns } = data
-  const pf = portfolio(customers, txns)
-  const chase = chaseList(customers, txns)
-  const nameOf = (id) => customers.find((c) => c.id === id)?.name ?? '?'
-  const recent = [...txns].sort((a, b) => b.ts - a.ts).slice(0, 5)
-  return (
-    <>
-      <div className="grid grid-cols-3 gap-2">
-        <Stat label="Outstanding" value={inr(pf.owed)} big />
-        <Stat label="Overdue 14d+" value={inr(pf.overdue)} tone={pf.overdue ? 'text-brick' : ''} />
-        <Stat label="Owe you" value={`${pf.owing}`} />
-      </div>
-      {chase.length > 0 && (
-        <Card>
-          <h3 className="font-display text-lg font-extrabold mb-1">पहले किससे मांगें <span className="text-muted font-sans text-sm font-semibold">· Chase first</span></h3>
-          {chase.map(({ c, balance, oldestDays }) => (
-            <button key={c.id} onClick={() => open(c.id)} className="w-full flex items-center gap-3 py-2.5 text-left rounded-xl hover:bg-paper px-1">
-              <Avatar name={c.name} size="w-10 h-10" />
-              <span className="flex-1 min-w-0"><span className="block font-bold truncate">{c.name}</span><span className="text-xs text-muted">{oldestDays ? `${oldestDays} days unpaid` : 'new'}</span></span>
-              <span className="font-display text-xl font-extrabold text-brick">{inr(balance)}</span>
-            </button>
-          ))}
-        </Card>
-      )}
-      <Card>
-        <h3 className="font-display text-lg font-extrabold mb-1">आज का हिसाब <span className="text-muted font-sans text-sm font-semibold">· Recent</span></h3>
-        {recent.length === 0 && <p className="text-muted py-2">Nothing yet.</p>}
-        {recent.map((t) => (
-          <div key={t.id} className="flex items-center gap-3 py-2">
-            <Avatar name={nameOf(t.cid)} size="w-8 h-8 text-sm" />
-            <span className="flex-1 min-w-0 truncate font-semibold">{nameOf(t.cid)}</span>
-            <span className="text-xs text-muted">{ago(t.ts)}</span>
-            <span className={`font-bold ${t.type === 'credit' ? 'text-brick' : 'text-leaf'}`}>{t.type === 'credit' ? '+' : '−'}{inr(t.amount)}</span>
-          </div>
-        ))}
-      </Card>
-    </>
+  if (card.kind === 'balance') return (
+    <Card className={`${wrap} flex items-center gap-3`}><Avatar name={card.customer.name} /><p className="flex-1 font-display text-xl font-extrabold">{card.customer.name}</p>
+      <p className={`font-display text-3xl font-extrabold ${card.balance_paise > 0 ? 'text-brick' : 'text-forest'}`}>{card.balance_paise > 0 ? inr(card.balance_paise) : 'Clear'}</p></Card>
   )
+  if (card.kind === 'summary') return (
+    <Card className={`${wrap} grid grid-cols-2 gap-3 text-center`}>
+      <div><p className="text-xs font-bold uppercase text-muted">Credit given</p><p className="font-display text-2xl font-extrabold text-brick">{inr(card.credit_paise)}</p></div>
+      <div><p className="text-xs font-bold uppercase text-muted">Payments received</p><p className="font-display text-2xl font-extrabold text-forest">{inr(card.payment_paise)}</p></div>
+    </Card>
+  )
+  if (card.kind === 'cancelled') return <Card className={`${wrap} text-center text-muted font-semibold`}>Cancelled. Nothing was saved.</Card>
+  if (card.kind === 'error') return <Card className={`${wrap} !bg-brick-soft text-brick font-semibold`}>{card.detail ? `Not saved: ${card.detail}` : 'Nothing was saved.'}</Card>
+  return null
 }
-
-const Stat = ({ label, value, big, tone = '' }) => (
-  <div className={`${big ? 'bg-ink text-paper' : 'bg-card border border-line'} rounded-2xl p-3`}>
-    <p className={`text-[11px] font-bold uppercase tracking-wide ${big ? 'text-paper/70' : 'text-muted'}`}>{label}</p>
-    <p className={`font-display text-xl sm:text-2xl font-extrabold leading-tight mt-0.5 ${tone}`}>{value}</p>
-  </div>
-)

@@ -1,0 +1,61 @@
+// Spoken/written replies. Hindi replies are Hinglish (roman script) so any Hindi or English voice can read them.
+// Languages without templates fall back to Hinglish; we never claim a language is supported when it is not.
+const rs = (paise) => String(Math.round(Math.abs(paise)) / 100)
+const kind = (type) => (type === 'credit' ? 'credit' : 'payment')
+
+const hi = {
+  greet: () => 'Namaste. Khata Bol mein aapka swagat hai. Aaj kya entry karni hai?',
+  confirm_credit: (v) => `${v.isNew ? `Naya customer ${v.name}. ` : ''}${v.name} ke khate mein ${rs(v.amount)} rupaye udhaar add karun?`,
+  confirm_payment: (v) => `${v.isNew ? `Naya customer ${v.name}. ` : ''}${v.name} se ${rs(v.amount)} rupaye ki payment record karun?`,
+  done_credit: (v) => `Ho gaya. ${v.name} ke khate mein ${rs(v.amount)} rupaye add ho gaye. Ab unka total balance ${rs(v.balance)} rupaye hai.`,
+  done_payment: (v) => `Payment record ho gayi. ${v.balance > 0 ? `${v.name} ke ${rs(v.balance)} rupaye baaki hain.` : v.balance === 0 ? `${v.name} ka khata ab saaf hai.` : `${v.name} ke khate mein ${rs(v.balance)} rupaye advance hain.`}`,
+  balance: (v) => (v.balance > 0 ? `${v.name} ke ${rs(v.balance)} rupaye baaki hain.` : v.balance === 0 ? `${v.name} ka koi paisa baaki nahi hai.` : `${v.name} ne ${rs(v.balance)} rupaye advance diye hain.`),
+  total: (v) => `Kul ${rs(v.total)} rupaye baaki hain, ${v.count} customers ke.`,
+  clarify_customer: (v) => `Aap ${v.names[0]} ki baat kar rahe hain ya ${v.names.slice(1).join(' ya ')} ki?`,
+  clarify_name: () => 'Kis customer ka naam hai?',
+  clarify_amount: (v) => `${v.name ? `${v.name} ke liye ` : ''}kitne rupaye?`,
+  invalid_amount: () => 'Yeh amount sahi nahi hai. Ek rupaye se das lakh rupaye ke beech boliye. Kitne rupaye?',
+  corrected: (v) => `Samajh gaya. ${hi[`confirm_${kind(v.type)}`](v)}`,
+  cancelled: () => 'Theek hai, cancel kar diya. Dobara boliye.',
+  unclear: () => 'Maaf kijiye, dobara boliye.',
+  nothing_pending: () => 'Abhi koi entry pending nahi hai. Aap nayi entry bol sakte hain.',
+  not_found: (v) => `${v.name} naam ka koi customer nahi mila.`,
+  summary: (v) => (v.count === 0 ? 'Aaj abhi tak koi entry nahi hui.' : `Aaj ${rs(v.credit)} rupaye ka udhaar diya gaya aur ${rs(v.payment)} rupaye ki payment receive hui.`),
+  reverse_ask: (v) => `Pichhli entry: ${v.name} ${v.type === 'credit' ? `ko ${rs(v.amount)} rupaye udhaar` : `se ${rs(v.amount)} rupaye ki payment`}. Isse reverse karun?`,
+  reverse_done: (v) => `Entry reverse kar di. ${v.name} ke ${rs(v.balance)} rupaye baaki hain.`.replace(/ ke 0 rupaye baaki hain\./, ' ka khata ab saaf hai.'),
+  reverse_none: () => 'Reverse karne ke liye koi entry nahi mili.',
+  duplicate: () => 'Yeh entry pehle hi save ho chuki hai. Dobara nahi jodi.',
+  save_failed: () => 'Maaf kijiye, entry save nahi ho paayi. Kuch save nahi hua. Dobara try karein.',
+  ai_needed: () => 'Is bhasha ko samajhne ke liye AI enhancement chahiye, jo abhi configure nahi hai. Hindi ya English mein boliye.',
+  ask_customer_for_balance: () => 'Kis customer ka balance chahiye?',
+}
+
+const en = {
+  greet: () => 'Namaste. Welcome to Khata Bol. What entry would you like to make today?',
+  confirm_credit: (v) => `${v.isNew ? `New customer ${v.name}. ` : ''}Add ${rs(v.amount)} rupees credit to ${v.name}'s account?`,
+  confirm_payment: (v) => `${v.isNew ? `New customer ${v.name}. ` : ''}Record a payment of ${rs(v.amount)} rupees from ${v.name}?`,
+  done_credit: (v) => `Done. Added ${rs(v.amount)} rupees to ${v.name}'s account. Their total balance is now ${rs(v.balance)} rupees.`,
+  done_payment: (v) => `Payment recorded. ${v.balance > 0 ? `${v.name} still owes ${rs(v.balance)} rupees.` : v.balance === 0 ? `${v.name}'s account is now clear.` : `${v.name} has ${rs(v.balance)} rupees in advance.`}`,
+  balance: (v) => (v.balance > 0 ? `${v.name} owes ${rs(v.balance)} rupees.` : v.balance === 0 ? `${v.name} owes nothing.` : `${v.name} has paid ${rs(v.balance)} rupees in advance.`),
+  total: (v) => `${v.count} customers owe ${rs(v.total)} rupees in total.`,
+  clarify_customer: (v) => `Do you mean ${v.names.join(' or ')}?`,
+  clarify_name: () => 'Which customer is it?',
+  clarify_amount: (v) => `How many rupees${v.name ? ` for ${v.name}` : ''}?`,
+  invalid_amount: () => 'That amount is not valid. Please say between one rupee and ten lakh rupees. How many rupees?',
+  corrected: (v) => `Understood. ${en[`confirm_${kind(v.type)}`](v)}`,
+  cancelled: () => 'Okay, cancelled. Please say it again.',
+  unclear: () => "Sorry, I didn't catch that. Please say it again.",
+  nothing_pending: () => 'There is nothing pending. You can say a new entry.',
+  not_found: (v) => `I could not find a customer named ${v.name}.`,
+  summary: (v) => (v.count === 0 ? 'No entries yet today.' : `Today ${rs(v.credit)} rupees of credit was given and ${rs(v.payment)} rupees of payments were received.`),
+  reverse_ask: (v) => `Previous entry: ${v.type === 'credit' ? `${rs(v.amount)} rupees credit to ${v.name}` : `${rs(v.amount)} rupees payment from ${v.name}`}. Reverse it?`,
+  reverse_done: (v) => `Entry reversed. ${v.balance > 0 ? `${v.name} owes ${rs(v.balance)} rupees.` : `${v.name}'s account is clear.`}`,
+  reverse_none: () => 'There is no entry to reverse.',
+  duplicate: () => 'That entry was already saved. I did not add it twice.',
+  save_failed: () => 'Sorry, the entry could not be saved. Nothing was saved. Please try again.',
+  ai_needed: () => 'Understanding this language needs AI enhancement, which is not configured. Please speak Hindi or English.',
+  ask_customer_for_balance: () => "Which customer's balance?",
+}
+
+export const replyLang = (code = 'hi-IN') => (String(code).startsWith('en') ? 'en' : 'hi')
+export const say = (lang, key, v = {}) => (replyLang(lang) === 'en' ? en : hi)[key](v)

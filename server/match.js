@@ -1,6 +1,6 @@
 const norm = (s) => s.toLowerCase().replace(/[^\p{L}\p{M}\p{N}]/gu, '')
 
-function lev(a, b) {
+export function lev(a, b) {
   let prev = Array.from({ length: b.length + 1 }, (_, i) => i)
   for (let i = 1; i <= a.length; i++) {
     const cur = [i]

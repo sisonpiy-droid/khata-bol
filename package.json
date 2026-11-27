@@ -4,8 +4,9 @@
   "type": "module",
   "scripts": {
     "dev": "concurrently -k -n api,web \"node server/index.js\" \"vite\"",
-    "test": "node test/match.test.mjs && node test/insights.test.mjs",
-    "build": "vite build"
+    "test": "node --test test/*.test.mjs",
+    "build": "vite build",
+    "start": "node server/index.js"
   },
   "dependencies": {
     "dotenv": "^18.0.9",
@@ -19,5 +20,8 @@
     "concurrently": "^10.0.6",
     "tailwindcss": "^4.3.4",
     "vite": "^8.3.6"
+  },
+  "engines": {
+    "node": ">=22.13"
   }
 }
