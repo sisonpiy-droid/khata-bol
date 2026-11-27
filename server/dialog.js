@@ -11,6 +11,8 @@ import { say as T } from './say.js'
 const fresh = () => ({ state: 'idle', customerId: null, lastTxnId: null, pending: null })
 const CONTEXT_WORDS = /\b(ab|abhi|unhone|usne|woh|wo|same|him|her|them)\b/
 const MIN_PAISE = 100
+const BIG_PAISE = 500000 // Rs 5,000: ask the shopkeeper to double-check
+const PENDING_TTL = 5 * 60 * 1000 // an unanswered question is dropped, never confirmed late
 
 function loadCtx(db, id) {
   const row = db.prepare('SELECT ctx FROM conversations WHERE id = ?').get(id)
@@ -21,12 +23,15 @@ const saveCtx = (db, id, ctx) =>
 
 const blank = { isYes: false, isNo: false, isCancel: false, isBalance: false, isSummary: false, isReverse: false, hasCredit: false, hasPayment: false, amountPaise: null, nameRef: null, recognised: true }
 
-export async function converse(db, { session, text = '', action = null, choice = null, txnId = null, lang = 'hi-IN' }) {
+export async function converse(db, { session, text = '', action = null, choice = null, txnId = null, lang = 'hi-IN', reply: replyLang = null }) {
+  const tl = replyLang || lang // language the answer is written in (the client picks one it can speak)
   if (!/^[\w-]{8,64}$/.test(String(session))) throw new L.LedgerError('Invalid session')
   const shopId = L.shopFor(db, session) // each visitor session has its own private shop
   const ctx = loadCtx(db, session)
+  let expired = false
+  if (ctx.pending && Date.now() - (ctx.at ?? 0) > PENDING_TTL) { ctx.pending = null; ctx.state = 'idle'; expired = true }
   const customers = L.listCustomers(db, shopId)
-  if (action === 'greet') return { say: T(lang, 'greet'), state: ctx.state, expect: null, card: null }
+  if (action === 'greet') return { say: T(tl, 'greet'), state: ctx.state, expect: null, card: null }
 
   let f
   if (action === 'confirm') f = { ...blank, isYes: true }
@@ -39,11 +44,14 @@ export async function converse(db, { session, text = '', action = null, choice =
       const ai = await aiParse(text)
       if (ai) f = fromAi(ai, customers)
       else if (!f.recognised && !/^(hi|en)/.test(lang) && !aiConfigured())
-        return { say: T(lang, 'ai_needed'), state: ctx.state, expect: ctx.state === 'idle' ? null : 'clarify', card: { kind: 'error' } }
+        return { say: T(tl, 'ai_needed'), state: ctx.state, expect: ctx.state === 'idle' ? null : 'clarify', card: { kind: 'error' } }
     }
   }
   if (f.nameRef?.status === 'match' && !f.nameRef.customer) f.nameRef = null // stale choice id
-  const reply = step(db, ctx, f, lang, customers, shopId)
+  const reply = expired && f.isYes && !f.hasCredit && !f.hasPayment
+    ? { say: T(tl, 'expired'), state: 'idle', expect: null, card: { kind: 'cancelled' } }
+    : step(db, ctx, f, tl, customers, shopId)
+  if (ctx.pending) ctx.at = Date.now()
   saveCtx(db, session, ctx)
   return reply
 }
@@ -98,9 +106,11 @@ function step(db, ctx, f, lang, customers, shopId) {
     ctx.state = 'awaiting_confirmation'
     const bal = p.customerId ? L.balanceOf(db, p.customerId) : 0
     const v = { name, amount: p.amountPaise, type: p.type, isNew: !p.customerId }
-    return out(prefix ? 'corrected' : `confirm_${p.type}`, v, {
-      card: { kind: 'pending', type: p.type, amount_paise: p.amountPaise, customer: { id: p.customerId, name, isNew: !p.customerId, balance_paise: bal }, after_paise: bal + (p.type === 'credit' ? p.amountPaise : -p.amountPaise) },
+    const big = p.amountPaise >= BIG_PAISE
+    const r = out(prefix ? 'corrected' : `confirm_${p.type}`, v, {
+      card: { kind: 'pending', type: p.type, amount_paise: p.amountPaise, large: big, customer: { id: p.customerId, name, isNew: !p.customerId, balance_paise: bal }, after_paise: bal + (p.type === 'credit' ? p.amountPaise : -p.amountPaise) },
     })
+    return big ? { ...r, say: r.say + T(lang, 'large_amount') } : r
   }
 
   function startTxn(f) {

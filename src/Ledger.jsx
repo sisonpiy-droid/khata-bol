@@ -20,7 +20,7 @@ export function HistoryRow({ row, onReverse, showName = true }) {
       </div>
       {onReverse && row.type !== 'reversal' && !row.reversed && (
         <button onClick={() => onReverse(row.id)} aria-label="Reverse this entry" title="Reverse this entry"
-          className="w-9 h-9 grid place-items-center rounded-full border border-line hover:bg-brick-soft text-muted hover:text-brick"><Icon n="undo" className="w-4 h-4" /></button>
+          className="w-11 h-11 shrink-0 grid place-items-center rounded-full border border-line hover:bg-brick-soft text-muted hover:text-brick"><Icon n="undo" className="w-4 h-4" /></button>
       )}
     </li>
   )

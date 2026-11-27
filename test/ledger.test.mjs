@@ -169,7 +169,7 @@ test('daily summary by voice, and English works too', async () => {
 
 test('unknown language without AI explains the limitation', async () => {
   const t = fresh()
-  const x = await talk(t, 'ರಮೇಶ್ ಗೆ ಐನೂರು ರೂಪಾಯಿ ಸಾಲ', { lang: 'kn-IN' })
+  const x = await talk(t, 'ನಮಸ್ಕಾರ ಹೇಗಿದ್ದೀರಿ', { lang: 'kn-IN' })
   assert.match(x.say, /AI enhancement/)
 })
 

@@ -1,5 +1,6 @@
 import { Avatar, Btn, Card, Chip, Icon, Orb, inr } from './ui.jsx'
 import { HistoryRow } from './Ledger.jsx'
+import { LANGS } from './lib/languages.js'
 
 const STATUS = {
   idle: ['Tap the mic and speak', 'माइक दबाएँ और बोलें'],
@@ -13,7 +14,7 @@ const STATUS = {
 }
 const TRY = ['Ramesh ko 500 rupaye udhaar diye', 'Ramesh ne 200 rupaye wapas diye', 'Ramesh ka kitna baaki hai?', 'Aaj ka hisaab batao']
 
-export default function Home({ data, cfg, mode, dlg, heard, interim, reply, err, hint, typed, setTyped, actions }) {
+export default function Home({ data, cfg, mode, dlg, heard, interim, reply, err, canRetry, hint, typed, setTyped, lang, setLang, actions }) {
   const [s1, s2] = STATUS[mode] ?? STATUS.idle
   const busy = mode === 'processing' || mode === 'saving'
   return (
@@ -25,10 +26,13 @@ export default function Home({ data, cfg, mode, dlg, heard, interim, reply, err,
           <p className="text-muted mt-1">{s2}</p>
         </div>
 
+        <LangSwitch lang={lang} setLang={setLang} />
         {hint && <p className="max-w-md text-center text-sm text-amber bg-amber-soft rounded-xl px-3 py-2">{hint}</p>}
         {err && (
           <Card role="alert" className="w-full max-w-md !bg-brick-soft !border-brick/20 flex gap-3 items-start animate-rise">
-            <Icon n="alert" className="text-brick shrink-0 mt-0.5" /><p className="font-semibold text-brick">{err}</p>
+            <Icon n="alert" className="w-5 h-5 text-brick shrink-0 mt-0.5" />
+            <div className="flex-1"><p className="font-semibold text-brick">{err}</p>
+              {canRetry && <Btn tone="brick" onClick={actions.retry} className="mt-2 !py-2 text-sm"><Icon n="refresh" className="w-4 h-4" /> Try again</Btn>}</div>
           </Card>
         )}
 
@@ -59,7 +63,7 @@ export default function Home({ data, cfg, mode, dlg, heard, interim, reply, err,
         <div className="w-full max-w-md">
           <p className="text-xs font-bold uppercase tracking-wider text-muted mb-2 text-center">Try saying · tap to run as text</p>
           <div className="flex flex-wrap justify-center gap-2">
-            {TRY.map((t) => <button key={t} disabled={busy} onClick={() => actions.say(t)} className="text-sm bg-card border border-line rounded-full px-3 py-1.5 hover:bg-mint disabled:opacity-40">“{t}”</button>)}
+            {TRY.map((t) => <button key={t} disabled={busy} onClick={() => actions.say(t)} className="text-sm bg-card border border-line rounded-full px-4 min-h-11 hover:bg-mint disabled:opacity-40">“{t}”</button>)}
           </div>
         </div>
       </div>
@@ -74,7 +78,7 @@ export default function Home({ data, cfg, mode, dlg, heard, interim, reply, err,
         <Card>
           <div className="flex items-center justify-between mb-1">
             <h3 className="font-display text-lg font-extrabold">Recent entries</h3>
-            {cfg.demo && <button onClick={actions.reset} className="inline-flex items-center gap-1 text-xs font-bold text-muted hover:text-brick"><Icon n="refresh" className="w-3.5 h-3.5" /> Reset demo data</button>}
+            {cfg.demo && <button onClick={actions.reset} className="inline-flex items-center gap-1 min-h-11 px-2 text-xs font-bold text-muted hover:text-brick"><Icon n="refresh" className="w-3.5 h-3.5" /> Reset demo data</button>}
           </div>
           <ul className="divide-y divide-line">{data.recent.slice(0, 8).map((r) => <HistoryRow key={r.id} row={r} onReverse={actions.reverse} />)}</ul>
           {!data.recent.length && <p className="text-muted py-3">No entries yet. Press the mic and say one.</p>}
@@ -109,7 +113,7 @@ function CardFor({ card, dlg, busy, actions }) {
       <div className="flex items-center gap-3">
         <Avatar name={card.customer.name} />
         <div className="flex-1 min-w-0"><p className="font-display text-2xl font-extrabold truncate">{card.customer.name} {card.customer.isNew && <Chip tone="good">NEW</Chip>}</p>
-          <Chip tone={credit ? 'bad' : 'good'}>{credit ? 'Credit · udhaar' : 'Repayment'}</Chip></div>
+          <Chip tone={credit ? 'bad' : 'good'}>{credit ? 'Credit · udhaar' : 'Repayment'}</Chip>{card.large && <> <Chip tone="warn">Large amount · check it</Chip></>}</div>
         <p className={`font-display text-4xl font-extrabold ${credit ? 'text-brick' : 'text-forest'}`}>{credit ? '+' : '−'}{inr(card.amount_paise)}</p>
       </div>
       <p className="text-sm text-muted mt-3">Balance {inr(card.customer.balance_paise)} → <b className="text-ink">{inr(card.after_paise)}</b></p>
@@ -158,4 +162,23 @@ function CardFor({ card, dlg, busy, actions }) {
   if (card.kind === 'cancelled') return <Card className={`${wrap} text-center text-muted font-semibold`}>Cancelled. Nothing was saved.</Card>
   if (card.kind === 'error') return <Card className={`${wrap} !bg-brick-soft text-brick font-semibold`}>{card.detail ? `Not saved: ${card.detail}` : 'Nothing was saved.'}</Card>
   return null
+}
+
+function LangSwitch({ lang, setLang }) {
+  const main = LANGS.slice(0, 3), more = LANGS.slice(3)
+  return (
+    <div role="radiogroup" aria-label="Language" className="flex flex-nowrap justify-center items-center gap-1.5 sm:gap-2 max-w-full">
+      {main.map((l) => (
+        <button key={l.code} role="radio" aria-checked={lang === l.code} onClick={() => setLang(l.code)}
+          className={`min-h-11 px-3 sm:px-4 rounded-full font-bold text-sm sm:text-base border transition ${lang === l.code ? 'bg-forest text-white border-forest' : 'bg-card border-line hover:bg-mint'}`}>
+          {l.short}{l.level === 'beta' && <span className="ml-1 text-[9px] uppercase opacity-70">beta</span>}
+        </button>
+      ))}
+      <select aria-label="More languages" value={more.some((m) => m.code === lang) ? lang : ''} onChange={(e) => e.target.value && setLang(e.target.value)}
+        className="min-h-11 w-24 sm:w-28 rounded-full border border-line bg-card px-2 font-bold text-sm">
+        <option value="" disabled>More…</option>
+        {more.map((l) => <option key={l.code} value={l.code}>{l.label} (beta)</option>)}
+      </select>
+    </div>
+  )
 }

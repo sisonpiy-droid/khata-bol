@@ -28,6 +28,8 @@ const hi = {
   save_failed: () => 'Maaf kijiye, entry save nahi ho paayi. Kuch save nahi hua. Dobara try karein.',
   ai_needed: () => 'Is bhasha ko samajhne ke liye AI enhancement chahiye, jo abhi configure nahi hai. Hindi ya English mein boliye.',
   ask_customer_for_balance: () => 'Kis customer ka balance chahiye?',
+  large_amount: () => ' Yeh bada amount hai, ek baar dhyan se check kar lijiye.',
+  expired: () => 'Woh entry kaafi der pehle ki thi, isliye cancel ho gayi. Dobara boliye.',
 }
 
 const en = {
@@ -55,7 +57,24 @@ const en = {
   save_failed: () => 'Sorry, the entry could not be saved. Nothing was saved. Please try again.',
   ai_needed: () => 'Understanding this language needs AI enhancement, which is not configured. Please speak Hindi or English.',
   ask_customer_for_balance: () => "Which customer's balance?",
+  large_amount: () => ' This is a large amount, please double-check it.',
+  expired: () => 'That entry was too old, so it was cancelled. Please say it again.',
 }
 
-export const replyLang = (code = 'hi-IN') => (String(code).startsWith('en') ? 'en' : 'hi')
-export const say = (lang, key, v = {}) => (replyLang(lang) === 'en' ? en : hi)[key](v)
+
+// Kannada core replies (unverified by a native speaker). Any key not listed here falls back to Hinglish.
+const kn = {
+  greet: () => 'ನಮಸ್ಕಾರ. ಖಾತಾ ಬೋಲ್‌ಗೆ ಸ್ವಾಗತ. ಇಂದು ಯಾವ ಎಂಟ್ರಿ ಮಾಡಬೇಕು?',
+  confirm_credit: (v) => `${v.name} ಖಾತೆಗೆ ${rs(v.amount)} ರೂಪಾಯಿ ಸಾಲ ಸೇರಿಸಲೇ?`,
+  confirm_payment: (v) => `${v.name} ಅವರಿಂದ ${rs(v.amount)} ರೂಪಾಯಿ ಪಾವತಿ ದಾಖಲಿಸಲೇ?`,
+  done_credit: (v) => `ಆಯಿತು. ${v.name} ಖಾತೆಗೆ ${rs(v.amount)} ರೂಪಾಯಿ ಸೇರಿಸಲಾಗಿದೆ. ಈಗ ಒಟ್ಟು ಬಾಕಿ ${rs(v.balance)} ರೂಪಾಯಿ.`,
+  done_payment: (v) => `ಪಾವತಿ ದಾಖಲಾಗಿದೆ. ${v.balance > 0 ? `${v.name} ಅವರ ಬಾಕಿ ${rs(v.balance)} ರೂಪಾಯಿ.` : `${v.name} ಅವರ ಖಾತೆ ಸರಿಯಾಗಿದೆ.`}`,
+  balance: (v) => (v.balance > 0 ? `${v.name} ಅವರ ಬಾಕಿ ${rs(v.balance)} ರೂಪಾಯಿ.` : `${v.name} ಅವರ ಬಾಕಿ ಇಲ್ಲ.`),
+  clarify_name: () => 'ಯಾವ ಗ್ರಾಹಕರು?',
+  clarify_amount: () => 'ಎಷ್ಟು ರೂಪಾಯಿ?',
+  cancelled: () => 'ಸರಿ, ರದ್ದು ಮಾಡಿದೆ. ಇನ್ನೊಮ್ಮೆ ಹೇಳಿ.',
+  unclear: () => 'ಕ್ಷಮಿಸಿ, ಇನ್ನೊಮ್ಮೆ ಹೇಳಿ.',
+}
+
+export const replyLang = (code = 'hi-IN') => (String(code).startsWith('en') ? 'en' : String(code).startsWith('kn') ? 'kn' : 'hi')
+export const say = (lang, key, v = {}) => ({ hi, en, kn }[replyLang(lang)][key] ?? hi[key])(v)

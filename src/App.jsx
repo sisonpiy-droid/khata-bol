@@ -1,5 +1,5 @@
 import { useEffect, useReducer, useRef, useState } from 'react'
-import { SR, listen, listenAudio, speak } from './lib/speech.js'
+import { SR, hasVoice, listen, listenAudio, speak } from './lib/speech.js'
 import { api, session as sessionId } from './lib/api.js'
 import { LANGS, spokenLang } from './lib/languages.js'
 import { initial, reduce } from './lib/machine.js'
@@ -10,11 +10,16 @@ import { Chip, Icon } from './ui.jsx'
 const MSG = {
   denied: 'Microphone is blocked. Click the lock icon in the address bar, set Microphone to Allow, then reload this page.',
   'no-speech': "I didn't hear anything. Tap the mic and try again.",
+  'no-mic': 'No microphone was found. Plug in or enable a microphone, or type below.',
+  network: 'Speech recognition needs an internet connection. Check your network, or type below.',
+  lang: 'This browser cannot recognise that language. Choose Hindi or English, or type below.',
   unsupported: 'This browser has no speech recognition. Please use Chrome, or type below.',
   other: 'Speech recognition failed. Try again, or type below.',
 }
 const OFFLINE = 'Maaf kijiye, server se connect nahi ho paaya. Kuch save nahi hua.'
 const AGAIN = 'Maaf kijiye, dobara boliye.'
+const LOW_CONFIDENCE = 0.45 // below this the words are probably wrong: ask again instead of guessing
+const ECHO_TAIL_MS = 450 // let the speaker go quiet before opening the mic
 
 export default function App() {
   const [data, setData] = useState({ shop: { name: '' }, stats: { outstanding_paise: 0, owing_count: 0 }, customers: [], recent: [], today: { credit_paise: 0, payment_paise: 0 } })
@@ -28,19 +33,26 @@ export default function App() {
   const [interim, setInterim] = useState('')
   const [err, setErr] = useState(null)
   const [typed, setTyped] = useState('')
+  const [retry, setRetry] = useState(null)
+  const [knVoice, setKnVoice] = useState(false)
   const vmRef = useRef(initial)
   const langRef = useRef(lang)
   const sttRef = useRef(false) // Gemini audio recognizer available and healthy
   const stopRef = useRef(null)
+  const knVoiceRef = useRef(false)
   const session = sessionId
   langRef.current = lang
 
   const send = (e) => { const n = reduce(vmRef.current, e); vmRef.current = n; setVm(n); return n }
-  const say = (t) => speak(t, spokenLang(langRef.current))
+  // Recognition language is what the user speaks; reply language is one this device can actually speak.
+  const replyLang = () => (langRef.current.startsWith('kn') && !knVoiceRef.current ? 'hi-IN' : langRef.current)
+  const say = (t) => speak(t, spokenLang(replyLang()))
+  const quiet = () => new Promise((r) => setTimeout(r, ECHO_TAIL_MS))
   const refresh = () => api.state().then(setData).catch(() => {})
 
   useEffect(() => {
     refresh()
+    hasVoice('kn-IN').then((ok) => { knVoiceRef.current = ok; setKnVoice(ok) })
     api.config().then((c) => { setCfg(c); sttRef.current = c.stt; force() }).catch(() => setErr(OFFLINE))
   }, [])
 
@@ -49,7 +61,7 @@ export default function App() {
     const greet = (e) => {
       if (e.target.closest?.('[data-mic]')) return
       window.removeEventListener('pointerdown', greet); window.removeEventListener('keydown', greet)
-      api.converse({ session, action: 'greet', lang: langRef.current }).then((r) => say(r.say)).catch(() => {})
+      api.converse({ session, action: 'greet', lang: langRef.current, reply: replyLang() }).then((r) => say(r.say)).catch(() => {})
     }
     window.addEventListener('pointerdown', greet); window.addEventListener('keydown', greet)
     return () => { window.removeEventListener('pointerdown', greet); window.removeEventListener('keydown', greet) }
@@ -72,19 +84,21 @@ export default function App() {
     if (!voice) interrupt()
     send({ type: voice ? 'HEARD' : body.action === 'confirm' ? 'CONFIRM' : 'TYPED' })
     if (vmRef.current.name !== 'processing' && vmRef.current.name !== 'saving') return
-    setHeard(body.text ?? null); setErr(null)
+    if (body.text != null) setHeard(body.text)
+    setErr(null); setRetry(null)
     let r
     try {
-      r = await api.converse({ session, lang: langRef.current, ...body })
+      r = await api.converse({ session, lang: langRef.current, reply: replyLang(), ...body })
     } catch {
       send({ type: 'FAIL' }); setErr(OFFLINE) // never pretend it was saved
+      setRetry({ body, typedInput: typedInput || voice }) // same body, same idempotency key: safe to repeat
       send({ type: 'STOP' }); return say(OFFLINE)
     }
     setReply(r); send({ type: 'REPLY', next: r.state }); refresh()
     await say(r.say)
     if (vmRef.current.name !== 'speaking') return // interrupted by a tap: the new action owns the state now
     send({ type: 'SPOKEN' })
-    if (r.expect) listenOnce(0) // the app asked a question: listen for the answer
+    if (r.expect) { await quiet(); if (vmRef.current.name === r.state) listenOnce(0) } // the app asked a question: listen for the answer, once its own voice has stopped
   }
 
   async function listenOnce(attempt = 0) {
@@ -94,12 +108,16 @@ export default function App() {
     setInterim(''); setErr(null)
     const l = hear(); stopRef.current = l.stop
     try {
-      const text = await l.promise
+      const { text, confidence } = await l.promise
+      if (confidence != null && confidence < LOW_CONFIDENCE && attempt < 1) { // probably misheard: show it, never act on it
+        setHeard(text); send({ type: 'SAY' }); await say(AGAIN); send({ type: 'SPOKEN' }); await quiet()
+        return vmRef.current.name === vmRef.current.dlg ? listenOnce(attempt + 1) : undefined
+      }
       turn({ text })
     } catch (e) {
       if (e.message === 'aborted') return
       if (e.message === 'no-speech' && vmRef.current.dlg !== 'idle' && attempt < 1) {
-        send({ type: 'SAY' }); await say(AGAIN); send({ type: 'SPOKEN' })
+        send({ type: 'SAY' }); await say(AGAIN); send({ type: 'SPOKEN' }); await quiet()
         return listenOnce(attempt + 1)
       }
       send({ type: 'FAIL' }); setErr(MSG[e.message] ?? MSG.other)
@@ -114,6 +132,7 @@ export default function App() {
       if (n === 'speaking') interrupt() // talk over the app: stop its voice, then listen
       listenOnce(0)
     },
+    retry: () => { const r = retry; if (r) { setRetry(null); turn(r.body, r.typedInput) } },
     typed: () => { const t = typed.trim(); if (t) { setTyped(''); turn({ text: t }, true) } },
     say: (t) => turn({ text: t }, true),
     confirm: () => turn({ action: 'confirm' }),
@@ -127,7 +146,9 @@ export default function App() {
   }
 
   const level = LANGS.find((l) => l.code === lang)?.level
-  const hint = level === 'beta' && !cfg.ai ? `${LANGS.find((l) => l.code === lang).label}: Chrome can hear it, but understanding it needs AI enhancement, which is not configured. Hindi and English work fully without any key.` : null
+  const hint = lang.startsWith('kn')
+    ? `ಕನ್ನಡ beta: basic phrases work without a key. ${knVoice ? 'Replies are spoken in Kannada.' : 'This device has no Kannada voice, so replies are spoken in Hinglish.'} Not yet verified with native speakers.`
+    : level === 'beta' && !cfg.ai ? `${LANGS.find((l) => l.code === lang).label}: Chrome can hear it, but understanding it needs AI enhancement, which is not configured. Hindi and English work fully without any key.` : null
 
   return (
     <div className="min-h-dvh flex flex-col">
@@ -142,12 +163,6 @@ export default function App() {
               <button key={v} onClick={() => setTab(v)} aria-current={tab === v} className={`inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-bold ${tab === v ? 'bg-forest text-white' : 'text-forest hover:bg-mint'}`}><Icon n={ic} className="w-4 h-4" />{l}</button>
             ))}
           </nav>
-          <label className="relative inline-flex items-center">
-            <Icon n="globe" className="w-4 h-4 absolute left-3 pointer-events-none text-forest" />
-            <select value={lang} aria-label="Language" onChange={(e) => setLang(e.target.value)} className="appearance-none bg-card border border-line rounded-full pl-9 pr-4 py-2 text-sm font-bold max-w-44">
-              {LANGS.map((l) => <option key={l.code} value={l.code}>{l.label}{l.level === 'beta' ? ' (beta)' : ''}</option>)}
-            </select>
-          </label>
         </div>
       </header>
 
@@ -159,7 +174,7 @@ export default function App() {
               {cfg.demo && <Chip tone="warn">Demo shop · synthetic data</Chip>}
               {!cfg.ai && <Chip>AI enhancement not configured · keyless parser active</Chip>}
             </div>
-            <Home data={data} cfg={cfg} mode={vm.name} dlg={vm.dlg} heard={heard} interim={interim} reply={reply} err={err} hint={hint} typed={typed} setTyped={setTyped} actions={actions} />
+            <Home data={data} cfg={cfg} mode={vm.name} dlg={vm.dlg} heard={heard} interim={interim} reply={reply} err={err} canRetry={!!retry} hint={hint} typed={typed} setTyped={setTyped} lang={lang} setLang={(l) => { langRef.current = l; setLang(l) }} actions={actions} />
           </>
         ) : <Ledger data={data} onReverse={actions.reverse} />}
       </main>

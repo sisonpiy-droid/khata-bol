@@ -12,28 +12,48 @@ const DEV = {
   'सौ': 'sau', 'हज़ार': 'hazaar', 'हजार': 'hazaar', 'लाख': 'lakh', 'एक': 'ek', 'दो': 'do', 'तीन': 'teen', 'चार': 'chaar', 'पाँच': 'paanch', 'पांच': 'paanch', 'छह': 'chhe', 'छः': 'chhe',
   'सात': 'saat', 'आठ': 'aath', 'नौ': 'nau', 'दस': 'das', 'बीस': 'bees', 'पच्चीस': 'pachees', 'तीस': 'tees', 'चालीस': 'chalis', 'पचास': 'pachaas', 'साठ': 'saath', 'सत्तर': 'sattar', 'अस्सी': 'assi', 'नब्बे': 'nabbe',
   'ढाई': 'dhai', 'डेढ़': 'derh', 'डेढ': 'derh', 'साढ़े': 'saade', 'साढे': 'saade', 'सवा': 'sawa', 'और': 'aur', 'में': 'mein', 'मैं': 'main', 'ना': 'na',
+  // Kannada basics (keyless). Unverified with native speakers; see README.
+  'ಸಾಲ': 'udhaar', 'ಉಧಾರ': 'udhaar', 'ಬಾಕಿ': 'baaki', 'ಎಷ್ಟು': 'kitna', 'ಬ್ಯಾಲೆನ್ಸ್': 'balance', 'ಹೌದು': 'haan', 'ಸರಿ': 'sahi', 'ಇಲ್ಲ': 'nahi', 'ಬೇಡ': 'nahi', 'ರದ್ದು': 'cancel',
+  'ರೂಪಾಯಿ': 'rupaye', 'ರೂಪಾಯಿಗಳು': 'rupaye', 'ರೂ': 'rupaye', 'ವಾಪಸ್': 'wapas', 'ಮರಳಿ': 'wapas', 'ಪಾವತಿ': 'payment', 'ಪಾವತಿಸಿದರು': 'payment',
+  'ಕೊಟ್ಟೆ': 'diye', 'ಕೊಟ್ಟರು': 'diye', 'ಕೊಟ್ಟಿದ್ದಾರೆ': 'diye', 'ಗೆ': 'ko', 'ಅವರಿಗೆ': 'ko', 'ನಿಂದ': 'se', 'ಅವರು': '', 'ಇಂದು': 'aaj', 'ಇಂದಿನ': 'aaj', 'ಲೆಕ್ಕ': 'hisaab',
+  'ಹಿಂದಿನ': 'pichhli', 'ಎಂಟ್ರಿ': 'entry', 'ತಪ್ಪು': 'galat', 'ಹೇಳಿ': 'batao', 'ಈಗ': 'ab', 'ಒಟ್ಟು': 'total',
+  'ಒಂದು': 'ek', 'ಎರಡು': 'do', 'ಮೂರು': 'teen', 'ನಾಲ್ಕು': 'chaar', 'ಐದು': 'paanch', 'ಆರು': 'chhe', 'ಏಳು': 'saat', 'ಎಂಟು': 'aath', 'ಒಂಬತ್ತು': 'nau', 'ಹತ್ತು': 'das', 'ಇಪ್ಪತ್ತು': 'bees', 'ಮೂವತ್ತು': 'tees',
+  'ನಲವತ್ತು': 'chalis', 'ಐವತ್ತು': 'pachaas', 'ಅರವತ್ತು': 'saath', 'ಎಪ್ಪತ್ತು': 'sattar', 'ಎಂಬತ್ತು': 'assi', 'ತೊಂಬತ್ತು': 'nabbe', 'ನೂರು': 'sau', 'ಇನ್ನೂರು': 'do sau', 'ಮುನ್ನೂರು': 'teen sau',
+  'ನಾನೂರು': 'chaar sau', 'ನಾಲ್ನೂರು': 'chaar sau', 'ಐನೂರು': 'paanch sau', 'ಆರುನೂರು': 'chhe sau', 'ಸಾವಿರ': 'hazaar',
 }
+
 
 const C = { 'क': 'k', 'ख': 'kh', 'ग': 'g', 'घ': 'gh', 'ङ': 'ng', 'च': 'ch', 'छ': 'chh', 'ज': 'j', 'झ': 'jh', 'ञ': 'ny', 'ट': 't', 'ठ': 'th', 'ड': 'd', 'ढ': 'dh', 'ण': 'n', 'त': 't', 'थ': 'th', 'द': 'd', 'ध': 'dh', 'न': 'n', 'प': 'p', 'फ': 'ph', 'ब': 'b', 'भ': 'bh', 'म': 'm', 'य': 'y', 'र': 'r', 'ल': 'l', 'व': 'v', 'श': 'sh', 'ष': 'sh', 'स': 's', 'ह': 'h', 'ळ': 'l', 'क़': 'q', 'ज़': 'z', 'ड़': 'r', 'फ़': 'f' }
 const V = { 'अ': 'a', 'आ': 'aa', 'इ': 'i', 'ई': 'ee', 'उ': 'u', 'ऊ': 'oo', 'ऋ': 'ri', 'ए': 'e', 'ऐ': 'ai', 'ओ': 'o', 'औ': 'au', 'ऑ': 'o' }
 const M = { 'ा': 'aa', 'ि': 'i', 'ी': 'ee', 'ु': 'u', 'ू': 'oo', 'े': 'e', 'ै': 'ai', 'ो': 'o', 'ौ': 'au', 'ृ': 'ri', 'ॉ': 'o' }
 
-// Devanagari word -> rough Latin ("रमेश" -> "ramesh"), schwa dropped at word end. Good enough for fuzzy name matching.
+// Indic word -> rough Latin for fuzzy name matching ("रमेश" -> "ramesh", "ರಮೇಶ್" -> "ramesh").
+// Devanagari drops the inherent final "a"; Kannada keeps it.
+const KC = { 'ಕ': 'k', 'ಖ': 'kh', 'ಗ': 'g', 'ಘ': 'gh', 'ಙ': 'ng', 'ಚ': 'ch', 'ಛ': 'chh', 'ಜ': 'j', 'ಝ': 'jh', 'ಞ': 'ny', 'ಟ': 't', 'ಠ': 'th', 'ಡ': 'd', 'ಢ': 'dh', 'ಣ': 'n', 'ತ': 't', 'ಥ': 'th', 'ದ': 'd', 'ಧ': 'dh', 'ನ': 'n', 'ಪ': 'p', 'ಫ': 'ph', 'ಬ': 'b', 'ಭ': 'bh', 'ಮ': 'm', 'ಯ': 'y', 'ರ': 'r', 'ಲ': 'l', 'ವ': 'v', 'ಶ': 'sh', 'ಷ': 'sh', 'ಸ': 's', 'ಹ': 'h', 'ಳ': 'l', 'ಱ': 'r' }
+const KV = { 'ಅ': 'a', 'ಆ': 'aa', 'ಇ': 'i', 'ಈ': 'ee', 'ಉ': 'u', 'ಊ': 'oo', 'ಋ': 'ru', 'ಎ': 'e', 'ಏ': 'e', 'ಐ': 'ai', 'ಒ': 'o', 'ಓ': 'o', 'ಔ': 'au' }
+const KM = { 'ಾ': 'aa', 'ಿ': 'i', 'ೀ': 'ee', 'ು': 'u', 'ೂ': 'oo', 'ೃ': 'ru', 'ೆ': 'e', 'ೇ': 'e', 'ೈ': 'ai', 'ೊ': 'o', 'ೋ': 'o', 'ೌ': 'au' }
+const SCRIPTS = {
+  dev: { c: C, v: V, m: M, halant: '्', nasal: 'ंँ', dropFinalA: true },
+  kn: { c: KC, v: KV, m: KM, halant: '್', nasal: 'ಂ', dropFinalA: false },
+}
+const isIndic = (t) => /[ऀ-ॿಀ-೿]/.test(t)
+
 export function translit(word) {
+  const S = /[ಀ-೿]/.test(word) ? SCRIPTS.kn : SCRIPTS.dev
   const cs = [...word.normalize('NFC').replace(/(.)़/gu, '$1')]
   let out = ''
   for (let i = 0; i < cs.length; i++) {
     const c = cs[i], n = cs[i + 1]
-    if (C[c]) {
-      out += C[c]
-      if (M[n]) out += M[n], i++
-      else if (n === '्') i++ // halant: no vowel
-      else if (i < cs.length - 1 && n !== 'ं' && n !== 'ँ') out += 'a'
-      else if (n === 'ं' || n === 'ँ') out += 'a'
-    } else if (V[c]) out += V[c]
-    else if (c === 'ं' || c === 'ँ') out += 'n'
+    if (S.c[c]) {
+      out += S.c[c]
+      if (S.m[n]) out += S.m[n], i++
+      else if (n === S.halant) i++ // no vowel
+      else if (n === undefined) out += S.dropFinalA ? '' : 'a'
+      else out += 'a'
+    } else if (S.v[c]) out += S.v[c]
+    else if (S.nasal.includes(c)) out += 'n'
     else if (c === 'ः') out += 'h'
-    else if (/[ऀ-ॿ]/.test(c)) continue
+    else if (/[ऀ-ॿಀ-೿]/.test(c)) continue
     else out += c
   }
   return out
@@ -83,7 +103,7 @@ const STOP = new Set(('ko ne ka ke ki se hai hain ho hu tha thi the to from for 
   'aapka hamara kitnaa hisab abhi bilkul confirm correct right wrong nope yeah yep stop ruko mat chhodo chod isse reverse entries transaction ' +
   'diya hua hui hue gaya gayi raha rahi lena dena liya dedo dedijiye karna').split(/\s+/))
 
-const YES = new Set('haan han ha haa yes yeah yep ok okay sahi theek thik correct right confirm bilkul ji kardo done sure'.split(' '))
+const YES = new Set('haan han ha haa yes yeah yep ok okay sahi theek thik correct right confirm bilkul ji kardo done sure save'.split(' '))
 const NO = new Set('nahi nahin na no nope galat ruko wrong cancel'.split(' '))
 
 export function normalize(text) {
@@ -91,7 +111,12 @@ export function normalize(text) {
   s = s.replace(/[०-९]/g, (d) => '०१२३४५६७८९'.indexOf(d))
   s = s.replace(/(\d)([^\d\s.])/gu, '$1 $2').replace(/([^\d\s.])(\d)/gu, '$1 $2')
   return s.split(/[^\p{L}\p{M}\p{N}.]+/u).map((t) => t.replace(/^\.+|\.+$/g, '')).filter(Boolean)
-    .map((t) => (/[ऀ-ॿ]/.test(t) ? DEV[t] ?? translit(t) : t))
+    .flatMap((t) => {
+      if (!isIndic(t)) return [t]
+      if (DEV[t] !== undefined) return DEV[t].split(' ').filter(Boolean)
+      if (t.length > 2 && t.endsWith('ಗೆ')) return [translit(t.slice(0, -2)), 'ko'] // "ರಮೇಶ್‌ಗೆ" = Ramesh + to
+      return [translit(t)]
+    })
 }
 
 const title = (s) => s.charAt(0).toUpperCase() + s.slice(1)
