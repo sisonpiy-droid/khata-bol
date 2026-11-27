@@ -23,8 +23,9 @@ const blank = { isYes: false, isNo: false, isCancel: false, isBalance: false, is
 
 export async function converse(db, { session, text = '', action = null, choice = null, txnId = null, lang = 'hi-IN' }) {
   if (!/^[\w-]{8,64}$/.test(String(session))) throw new L.LedgerError('Invalid session')
+  const shopId = L.shopFor(db, session) // each visitor session has its own private shop
   const ctx = loadCtx(db, session)
-  const customers = L.listCustomers(db)
+  const customers = L.listCustomers(db, shopId)
   if (action === 'greet') return { say: T(lang, 'greet'), state: ctx.state, expect: null, card: null }
 
   let f
@@ -42,7 +43,7 @@ export async function converse(db, { session, text = '', action = null, choice =
     }
   }
   if (f.nameRef?.status === 'match' && !f.nameRef.customer) f.nameRef = null // stale choice id
-  const reply = step(db, ctx, f, lang, customers)
+  const reply = step(db, ctx, f, lang, customers, shopId)
   saveCtx(db, session, ctx)
   return reply
 }
@@ -54,9 +55,9 @@ function fromAi(ai, customers) {
   return f
 }
 
-function step(db, ctx, f, lang, customers) {
+function step(db, ctx, f, lang, customers, shopId) {
   const out = (key, v, extra = {}) => ({ say: T(lang, key, v), state: ctx.state, expect: ctx.state === 'idle' ? null : ctx.state === 'awaiting_confirmation' ? 'confirm' : 'clarify', card: null, ...extra })
-  const nameOf = (id) => customers.find((c) => c.id === id)?.name ?? L.entryById(db, ctx.lastTxnId)?.customer_name ?? ''
+  const nameOf = (id) => customers.find((c) => c.id === id)?.name ?? L.entryById(db, shopId, ctx.lastTxnId)?.customer_name ?? ''
 
   const finish = (key, v, extra) => { ctx.state = 'idle'; ctx.pending = null; return out(key, v, extra) }
   const unclear = () => (ctx.pending ? { ...prompt(), say: `${T(lang, 'unclear')} ${prompt().say}` } : finish('unclear'))
@@ -81,7 +82,7 @@ function step(db, ctx, f, lang, customers) {
     const p = ctx.pending
     if (p.kind === 'reversal') {
       ctx.state = 'awaiting_confirmation'
-      const e = L.entryById(db, p.txnId)
+      const e = L.entryById(db, shopId, p.txnId)
       return out('reverse_ask', { name: e.customer_name, type: e.type, amount: e.amount_paise }, { card: { kind: 'reversal', entry: { customer_name: e.customer_name, type: e.type, amount_paise: e.amount_paise, ts: e.ts } } })
     }
     if (p.kind === 'balance') { ctx.state = 'awaiting_clarification'; return out('ask_customer_for_balance') }
@@ -113,8 +114,8 @@ function step(db, ctx, f, lang, customers) {
 
   function startReverse(f) {
     const ok = (e) => e && e.type !== 'reversal' && !db.prepare('SELECT 1 FROM transactions WHERE reversed_of = ?').get(e.id)
-    const asked = f.reverseId ? L.entryById(db, f.reverseId) : null
-    const target = f.reverseId ? (ok(asked) ? asked : null) : (ok(ctx.lastTxnId && L.entryById(db, ctx.lastTxnId)) ? L.entryById(db, ctx.lastTxnId) : L.lastReversible(db))
+    const asked = f.reverseId ? L.entryById(db, shopId, f.reverseId) : null
+    const target = f.reverseId ? (ok(asked) ? asked : null) : (ok(ctx.lastTxnId && L.entryById(db, shopId, ctx.lastTxnId)) ? L.entryById(db, shopId, ctx.lastTxnId) : L.lastReversible(db, shopId))
     if (!target) return finish('reverse_none')
     ctx.pending = { kind: 'reversal', id: randomUUID(), txnId: target.id }
     return prompt()
@@ -138,7 +139,7 @@ function step(db, ctx, f, lang, customers) {
   }
 
   function answerSummary() {
-    const s = L.todaySummary(db)
+    const s = L.todaySummary(db, shopId)
     return finish('summary', { credit: s.credit_paise, payment: s.payment_paise, count: s.count }, { card: { kind: 'summary', ...s } })
   }
 
@@ -146,14 +147,14 @@ function step(db, ctx, f, lang, customers) {
     const p = ctx.pending
     try {
       if (p.kind === 'reversal') {
-        const r = L.reverseTxn(db, { txnId: p.txnId, key: p.id })
+        const r = L.reverseTxn(db, { shopId, txnId: p.txnId, key: p.id })
         ctx.customerId = r.txn.customer_id; ctx.lastTxnId = null
-        const name = L.entryById(db, r.txn.id).customer_name
+        const name = L.entryById(db, shopId, r.txn.id).customer_name
         return finish(r.duplicate ? 'duplicate' : 'reverse_done', { name, balance: r.balance_paise }, { changed: true, card: { kind: 'saved', reversal: true, customer: { id: r.txn.customer_id, name }, balance_paise: r.balance_paise } })
       }
-      const r = L.commitEntry(db, { customerId: p.customerId, newName: p.newName, type: p.type, amountPaise: p.amountPaise, key: p.id })
+      const r = L.commitEntry(db, { shopId, customerId: p.customerId, newName: p.newName, type: p.type, amountPaise: p.amountPaise, key: p.id })
       const cid = r.txn.customer_id
-      const name = r.customer?.name ?? L.entryById(db, r.txn.id).customer_name
+      const name = r.customer?.name ?? L.entryById(db, shopId, r.txn.id).customer_name
       ctx.customerId = cid; ctx.lastTxnId = r.txn.id
       return finish(r.duplicate ? 'duplicate' : `done_${p.type}`, { name, amount: p.amountPaise, balance: r.balance_paise },
         { changed: !r.duplicate, card: { kind: 'saved', type: p.type, amount_paise: p.amountPaise, customer: { id: cid, name }, balance_paise: r.balance_paise, duplicate: r.duplicate } })

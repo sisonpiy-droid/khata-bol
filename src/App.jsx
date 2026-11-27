@@ -1,6 +1,6 @@
 import { useEffect, useReducer, useRef, useState } from 'react'
 import { SR, listen, listenAudio, speak } from './lib/speech.js'
-import { api } from './lib/api.js'
+import { api, session as sessionId } from './lib/api.js'
 import { LANGS, spokenLang } from './lib/languages.js'
 import { initial, reduce } from './lib/machine.js'
 import Home from './Home.jsx'
@@ -15,16 +15,6 @@ const MSG = {
 }
 const OFFLINE = 'Maaf kijiye, server se connect nahi ho paaya. Kuch save nahi hua.'
 const AGAIN = 'Maaf kijiye, dobara boliye.'
-
-const newSession = () => {
-  try {
-    const k = localStorage.getItem('khata.session')
-    if (k) return k
-    const id = crypto.randomUUID()
-    localStorage.setItem('khata.session', id)
-    return id
-  } catch { return `s-${Math.random().toString(36).slice(2, 12)}` }
-}
 
 export default function App() {
   const [data, setData] = useState({ shop: { name: '' }, stats: { outstanding_paise: 0, owing_count: 0 }, customers: [], recent: [], today: { credit_paise: 0, payment_paise: 0 } })
@@ -42,7 +32,7 @@ export default function App() {
   const langRef = useRef(lang)
   const sttRef = useRef(false) // Gemini audio recognizer available and healthy
   const stopRef = useRef(null)
-  const session = useRef(newSession()).current
+  const session = sessionId
   langRef.current = lang
 
   const send = (e) => { const n = reduce(vmRef.current, e); vmRef.current = n; setVm(n); return n }

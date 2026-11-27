@@ -14,7 +14,7 @@ No `.env` and no API keys are needed. Without Docker:
 ```bash
 npm install
 npm run dev              # app on http://localhost:5173, API on :8787 (Node 22.13+)
-npm test                 # 19 backend and state-machine tests
+npm test                 # 23 backend and state-machine tests
 ```
 
 Use **Chrome** and allow the microphone. `localhost` counts as secure, so voice works without HTTPS.
@@ -52,6 +52,8 @@ mic -> speech recognition -> text ──> POST /api/converse ──> state machi
 - **UI state machine** (`src/lib/machine.js`): idle, listening, processing, speaking, awaiting_*, saving, error. It cannot listen while speaking, so the mic never transcribes the app's own voice.
 - **Ledger** (`server/ledger.js`): amounts are integer paise; every entry has an idempotency key (a repeated confirm never double-posts); rows are immutable (database triggers); mistakes are fixed by a linked reversal plus an audit event; a failed save is reported, never faked. Backend validation, not just UI.
 
+Deploy: `railway.json` + `Dockerfile` run as one Node service; `/health` reports readiness. Steps in [RAILWAY.md](RAILWAY.md).
+
 Folders: `server/` (API, ledger, parser, dialogue), `src/` (React UI, voice, state machine), `test/`, `Dockerfile`, `compose.yaml`.
 
 ## Languages
@@ -74,7 +76,7 @@ Set `GEMINI_API_KEY` or `ANTHROPIC_API_KEY` (see `.env.example`). Without a key 
 - Chrome's speech recognition sends audio to Google and needs internet. Browser voices vary; if a device has no Hindi voice, replies may be read in an English accent.
 - Replies are Hinglish (roman script) or English. Other languages get Hinglish replies.
 - Prototype: one shop, no login, demo data is synthetic. "Reset demo data" only works while the shop is flagged as demo.
-- The Vercel demo runs on ephemeral storage (data resets when the function restarts). Use Docker or any persistent host for real data.
+- Public demo: each visitor gets a private demo shop (isolated ledger and conversation). See [RAILWAY.md](RAILWAY.md) to host it with a persistent volume.
 - Not built on purpose: WhatsApp reminders, payments, inventory, merchant authentication.
 
 ## Demo

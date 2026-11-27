@@ -1,12 +1,14 @@
 import { DatabaseSync } from 'node:sqlite'
 import { mkdirSync } from 'node:fs'
-import { dirname } from 'node:path'
+import { dirname, join } from 'node:path'
 
 const SCHEMA = `
 PRAGMA journal_mode = WAL;
+PRAGMA busy_timeout = 5000;
 PRAGMA foreign_keys = ON;
 CREATE TABLE IF NOT EXISTS shops (
-  id INTEGER PRIMARY KEY, name TEXT NOT NULL, is_demo INTEGER NOT NULL DEFAULT 0
+  id INTEGER PRIMARY KEY, name TEXT NOT NULL, is_demo INTEGER NOT NULL DEFAULT 0,
+  visitor TEXT, last_seen TEXT -- public demo: one private shop per visitor session
 );
 CREATE TABLE IF NOT EXISTS customers (
   id INTEGER PRIMARY KEY, shop_id INTEGER NOT NULL REFERENCES shops(id),
@@ -41,9 +43,23 @@ WHEN (SELECT is_demo FROM shops WHERE id = OLD.shop_id) != 1
 BEGIN SELECT RAISE(ABORT, 'only demo data can be deleted'); END;
 `
 
-export function openDb(path = process.env.KHATA_DB || (process.env.VERCEL ? '/tmp/khata.db' : 'data/khata.db')) {
+// Where the database lives. Railway sets RAILWAY_VOLUME_MOUNT_PATH when a volume is attached, so the
+// ledger lands on the persistent volume with no extra config. Elsewhere: KHATA_DB, else ./data/khata.db.
+export function dbPath() {
+  if (process.env.RAILWAY_VOLUME_MOUNT_PATH) return join(process.env.RAILWAY_VOLUME_MOUNT_PATH, 'khata.db')
+  return process.env.KHATA_DB || 'data/khata.db'
+}
+
+// True when records will survive a restart: a Railway volume is attached, or we are not on Railway at all.
+export const isPersistent = () => !process.env.RAILWAY_ENVIRONMENT || !!process.env.RAILWAY_VOLUME_MOUNT_PATH
+
+export function openDb(path = dbPath()) {
   if (path !== ':memory:') mkdirSync(dirname(path), { recursive: true })
   const db = new DatabaseSync(path)
   db.exec(SCHEMA)
+  // Databases created before per-visitor demos lack these columns.
+  const cols = db.prepare('PRAGMA table_info(shops)').all().map((c) => c.name)
+  if (!cols.includes('visitor')) db.exec('ALTER TABLE shops ADD COLUMN visitor TEXT; ALTER TABLE shops ADD COLUMN last_seen TEXT;')
+  db.exec('CREATE UNIQUE INDEX IF NOT EXISTS shop_visitor ON shops(visitor) WHERE visitor IS NOT NULL')
   return db
 }
