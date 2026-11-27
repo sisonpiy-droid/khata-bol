@@ -27,7 +27,7 @@ function limiter(max) {
 export function createApp(db = openDb()) {
   const app = express()
   app.disable('x-powered-by')
-  if (process.env.RAILWAY_ENVIRONMENT || process.env.TRUST_PROXY) app.set('trust proxy', 1) // real client IP behind the platform proxy
+  if (process.env.RAILWAY_ENVIRONMENT || process.env.VERCEL || process.env.TRUST_PROXY) app.set('trust proxy', 1) // real client IP behind the platform proxy
   app.use((_req, res, next) => {
     res.set({ 'Permissions-Policy': 'microphone=(self)', 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-referrer', 'Content-Security-Policy': CSP })
     next()

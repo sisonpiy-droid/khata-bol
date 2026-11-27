@@ -74,12 +74,14 @@ BEGIN SELECT RAISE(ABORT, 'only demo data can be deleted'); END;
 // Where the database lives. Railway sets RAILWAY_VOLUME_MOUNT_PATH when a volume is attached, so the
 // ledger lands on the persistent volume with no extra config. Elsewhere: KHATA_DB, else ./data/khata.db.
 export function dbPath() {
+  // ponytail: Vercel has no persistent disk; /tmp lives as long as the warm instance. Move to Turso/Neon for real persistence.
+  if (process.env.VERCEL) return '/tmp/khata.db'
   if (process.env.RAILWAY_VOLUME_MOUNT_PATH) return join(process.env.RAILWAY_VOLUME_MOUNT_PATH, 'khata.db')
   return process.env.KHATA_DB || 'data/khata.db'
 }
 
 // True when records will survive a restart: a Railway volume is attached, or we are not on Railway at all.
-export const isPersistent = () => !process.env.RAILWAY_ENVIRONMENT || !!process.env.RAILWAY_VOLUME_MOUNT_PATH
+export const isPersistent = () => !process.env.VERCEL && (!process.env.RAILWAY_ENVIRONMENT || !!process.env.RAILWAY_VOLUME_MOUNT_PATH)
 
 export function openDb(path = dbPath()) {
   if (path !== ':memory:') mkdirSync(dirname(path), { recursive: true })
