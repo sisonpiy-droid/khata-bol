@@ -26,6 +26,12 @@ No API key is ever sent to the browser (`/api/config` returns only yes/no flags)
 - Security headers: Content-Security-Policy (same-origin scripts and connections), `X-Content-Type-Options`, `Referrer-Policy`, `Permissions-Policy: microphone=(self)`.
 - Secrets live only in environment variables and `.env` (git-ignored).
 
+## Reminders, reports and dictation
+- Reminders hold the customer, due date/time, optional expected amount, priority and an optional note, in the same SQLite database, scoped to the visitor's own shop and removed with it (reset or 14-day prune).
+- Reports are computed on request from stored rows. Nothing is sent to an AI provider.
+- Notifications are in-app (and browser notifications only while the app is open and permission was granted). No customer is ever contacted automatically; the shopkeeper copies or shares a message by hand.
+- Dictated text (for example from Wispr Flow) is ordinary typed input as far as Khata Bol is concerned. Whatever dictation tool the user runs has its own privacy terms.
+
 ## Known limitations
 - Limits are in memory (reset on restart; per process). One instance only (SQLite single writer).
 - Chrome's speech recognition and the transcripts' presence in the audit log are real privacy trade-offs for a demo; say so when presenting.

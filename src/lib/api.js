@@ -25,4 +25,13 @@ export const api = {
   history: (customerId) => get(`/api/history?customerId=${customerId}`),
   converse: (body) => post('/api/converse', body),
   resetDemo: () => post('/api/reset-demo'),
+  daily: (date) => get(`/api/reports/daily${date ? `?date=${date}` : ''}`),
+  weekly: () => get('/api/reports/weekly'),
+  followups: (status = 'open', sort = 'due') => get(`/api/followups?status=${status}&sort=${sort}`),
+  addFollowup: (body) => post('/api/followups', { key: crypto.randomUUID?.() ?? `k-${Math.random().toString(36).slice(2, 14)}`, ...body }),
+  updateFollowup: (id, body) => post(`/api/followups/${id}/update`, body),
+  completeFollowup: (id) => post(`/api/followups/${id}/complete`),
+  cancelFollowup: (id) => post(`/api/followups/${id}/cancel`),
+  dueNotifications: () => get('/api/notifications/due'),
+  ackNotification: (commitmentId, key) => post('/api/notifications/ack', { commitmentId, key }),
 }

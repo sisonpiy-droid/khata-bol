@@ -1,4 +1,5 @@
-import { Avatar, Btn, Card, Chip, Icon, Orb, inr } from './ui.jsx'
+import { useState } from 'react'
+import { Avatar, Btn, Card, Chip, Icon, Orb, PRIO, URG, dmy, hmLabel, inr } from './ui.jsx'
 import { HistoryRow } from './Ledger.jsx'
 import { LANGS } from './lib/languages.js'
 
@@ -15,7 +16,7 @@ const STATUS = {
 const TRY = ['Ramesh ko 500 rupaye udhaar diye', 'Ramesh ne 200 rupaye wapas diye', 'Ramesh ka kitna baaki hai?', 'Aaj ka hisaab batao']
 
 export default function Home({ data, loading, cfg, v, hint, typed, setTyped, lang, setLang, tips, voiceOk, actions }) {
-  const { mode, dlg, heard, interim, reply, err, canRetry } = v
+  const { mode, dlg, heard, interim, reply, err, canRetry, source } = v
   const [s1, s2] = STATUS[mode] ?? STATUS.idle
   const busy = mode === 'processing' || mode === 'saving'
   return (
@@ -27,6 +28,7 @@ export default function Home({ data, loading, cfg, v, hint, typed, setTyped, lan
           <p className="text-muted mt-1">{s2}</p>
         </div>
 
+        <Btn onClick={actions.briefing} disabled={busy} className="w-full max-w-md" aria-label="Hear today's briefing"><Icon n="volume" /> Hear today's briefing</Btn>
         <LangSwitch lang={lang} setLang={setLang} />
         {!voiceOk && <p className="max-w-md text-center text-sm text-muted bg-card border border-line rounded-xl px-3 py-2">This device has no voice for spoken replies. Khata Bol will show every reply as text.</p>}
         {hint && <p className="max-w-md text-center text-sm text-amber bg-amber-soft rounded-xl px-3 py-2">{hint}</p>}
@@ -40,7 +42,7 @@ export default function Home({ data, loading, cfg, v, hint, typed, setTyped, lan
 
         {heard && (
           <p className="w-full max-w-md bg-card border border-line rounded-2xl px-4 py-3 animate-rise">
-            <span className="block text-xs font-bold uppercase tracking-wider text-muted">You said</span>
+            <span className="block text-xs font-bold uppercase tracking-wider text-muted">{{ voice: 'You said', typed: 'You typed', dictation: "You dictated (text from your own dictation tool, not Khata Bol's microphone)" }[source] ?? 'You said'}</span>
             <span className="text-xl leading-snug" lang={lang.slice(0, 2)}>“{heard}”</span>
           </p>
         )}
@@ -61,6 +63,7 @@ export default function Home({ data, loading, cfg, v, hint, typed, setTyped, lan
           </label>
           <Btn tone="soft" aria-label="Send" disabled={busy} className="!px-4"><Icon n="send" /></Btn>
         </form>
+        <Dictation busy={busy} actions={actions} />
 
         {tips.show && <Tips tips={tips} busy={busy} actions={actions} />}
         <div className="w-full max-w-md">
@@ -73,6 +76,7 @@ export default function Home({ data, loading, cfg, v, hint, typed, setTyped, lan
 
       <aside className="flex flex-col gap-4" aria-busy={loading}>
         {loading ? <Card className="animate-pulse"><div className="h-24 rounded-2xl bg-line/50" /><p className="text-muted mt-3">Loading your khata…</p></Card> : <>
+        <Collections data={data} actions={actions} />
         <div className="grid grid-cols-2 gap-3">
           <Stat big label="Total outstanding" value={inr(data.stats.outstanding_paise)} />
           <Stat label="Customers with dues" value={data.stats.owing_count} />
@@ -151,9 +155,10 @@ function CardFor({ card, dlg, busy, actions }) {
       <div className="flex items-center gap-3">
         <span className="w-10 h-10 rounded-full bg-forest text-white grid place-items-center"><Icon n="check" sw={3} /></span>
         <div className="flex-1"><p className="font-bold">{card.duplicate ? 'Already saved' : card.reversal ? 'Reversed' : card.added ? 'Customer added' : 'Saved'} · {card.customer.name}</p>
-          {card.amount_paise && <p className="text-sm text-muted">{credit ? 'Credit' : 'Payment'} {inr(card.amount_paise)}</p>}</div>
+          {card.amount_paise && <p className="text-sm text-muted">{credit ? 'Credit' : 'Payment'} {inr(card.amount_paise)}</p>}{card.date_label && <p className="text-sm text-muted">{card.date_label}{card.time_label ? ` · ${card.time_label}` : ''}</p>}</div>
         <div className="text-right"><p className="text-xs text-muted">Balance now</p><p className="font-display text-2xl font-extrabold">{inr(card.balance_paise)}</p></div>
       </div>
+      {card.offer && <><p className="mt-3 text-sm font-semibold">This payment settles a reminder. Mark it complete?</p><Decision busy={busy} actions={actions} yes="Mark complete" no="Not now" /></>}
     </Card>
   )
   if (card.kind === 'balance') return (
@@ -186,6 +191,60 @@ function CardFor({ card, dlg, busy, actions }) {
   if (card.kind === 'total') return (
     <Card className={`${wrap} text-center`}><p className="text-xs font-bold uppercase text-muted">Total outstanding</p><p className="font-display text-4xl font-extrabold text-brick">{inr(card.total_paise)}</p><p className="text-sm text-muted">{card.count} customers</p></Card>
   )
+  if (card.kind === 'followup') {
+    const T = { create: 'Set payment reminder', reschedule: 'Move reminder', priority: 'Change priority', cancel: 'Cancel reminder', complete: 'Mark reminder complete' }[card.mode]
+    return (
+      <Card className={wrap}>
+        <div className="flex items-center gap-3">
+          <Avatar name={card.customer.name} />
+          <div className="flex-1 min-w-0"><p className="font-display text-2xl font-extrabold truncate">{card.customer.name}</p><Chip tone="warn">{T}</Chip></div>
+          {card.amount_paise ? <p className="font-display text-2xl font-extrabold">{inr(card.amount_paise)}</p> : null}
+        </div>
+        <p className="mt-3 flex items-center gap-2 text-lg font-semibold"><Icon n="calendar" className="w-5 h-5 text-forest" />{dmy(card.date)}{card.time ? ` · ${hmLabel(card.time)}` : ''}
+          {card.priority && <Chip tone={PRIO[card.priority][0]}>{PRIO[card.priority][1]} priority</Chip>}</p>
+        <p className="text-sm text-muted mt-1">Owes now {inr(Math.max(card.balance_paise, 0))}. A reminder never changes the balance.</p>
+        <Decision busy={busy} actions={actions} yes="Confirm · सही है" />
+      </Card>
+    )
+  }
+  if (card.kind === 'optionchoice') return (
+    <Card className={wrap}>
+      <p className="text-sm font-bold text-muted mb-3">{card.field === 'date' ? 'Which date?' : 'Morning or evening?'}</p>
+      <div className="grid gap-3">{card.options.map((o) => <Btn key={o.value} tone="soft" onClick={() => actions.option(o.value)} disabled={busy} className="text-lg">{o.label}</Btn>)}</div>
+      <Btn tone="brick" onClick={actions.cancel} disabled={busy} className="w-full mt-3"><Icon n="x" /> Cancel</Btn>
+    </Card>
+  )
+  if (card.kind === 'commitchoice') return (
+    <Card className={wrap}>
+      <p className="text-sm font-bold text-muted mb-3">Which reminder?</p>
+      <div className="grid gap-3">{card.options.map((o) => <Btn key={o.id} tone="soft" onClick={() => actions.choose(o.id)} disabled={busy} className="text-lg">{o.name}</Btn>)}</div>
+      <Btn tone="brick" onClick={actions.cancel} disabled={busy} className="w-full mt-3"><Icon n="x" /> Cancel</Btn>
+    </Card>
+  )
+  if (card.kind === 'list') return (
+    <Card className={wrap}>
+      <h4 className="font-display text-lg font-extrabold">{card.title} <Chip>{card.items.length}</Chip></h4>
+      {card.items.length ? (
+        <ul className="divide-y divide-line">{card.items.slice(0, 6).map((c) => (
+          <li key={c.id} className="flex items-center gap-3 py-2.5">
+            <Avatar name={c.customer_name} size="w-9 h-9 text-sm" />
+            <span className="min-w-0 flex-1"><span className="block font-bold truncate">{c.customer_name}</span><span className="text-xs text-muted">{dmy(c.due_date)} · {URG[c.urgency]?.[1]}</span></span>
+            <Chip tone={PRIO[c.priority][0]}>{PRIO[c.priority][1]}</Chip>
+            <span className="font-display font-extrabold">{inr(c.amount_paise ?? Math.max(c.balance_paise, 0))}</span>
+          </li>))}</ul>
+      ) : <p className="text-muted py-2">Nothing here.</p>}
+    </Card>
+  )
+  if (card.kind === 'report') {
+    const r = card.report
+    return (
+      <Card className={`${wrap} grid grid-cols-3 gap-2 text-center`}>
+        <div><p className="text-[11px] font-bold uppercase text-muted">Credit given</p><p className="font-display text-xl font-extrabold text-brick">{inr(r.credit_paise)}</p></div>
+        <div><p className="text-[11px] font-bold uppercase text-muted">Payments</p><p className="font-display text-xl font-extrabold text-forest">{inr(r.payment_paise)}</p></div>
+        <div><p className="text-[11px] font-bold uppercase text-muted">Outstanding</p><p className="font-display text-xl font-extrabold">{inr(r.outstanding_paise)}</p></div>
+      </Card>
+    )
+  }
   if (card.kind === 'cancelled') return <Card className={`${wrap} text-center text-muted font-semibold`}>Cancelled. Nothing was saved.</Card>
   if (card.kind === 'error') return <Card className={`${wrap} !bg-brick-soft text-brick font-semibold`}>{card.detail ? `Not saved: ${card.detail}` : 'Nothing was saved.'}</Card>
   return null
@@ -229,5 +288,57 @@ function Tips({ tips, busy, actions }) {
         <Btn tone="soft" onClick={tips.dismiss} className="min-h-11 text-sm">Got it</Btn>
       </div>
     </section>
+  )
+}
+
+// Today's collections at a glance. Urgency (overdue / due today) is computed from dates; priority is the shopkeeper's own choice.
+function Collections({ data, actions }) {
+  const r = data.report
+  if (!r) return null
+  const live = (a) => a.filter((c) => !c.settled && !c.linked_reversed)
+  const overdue = live(r.overdue), due = live(r.due_today), upcoming = live(r.upcoming)
+  const high = [...overdue, ...due, ...upcoming].filter((c) => c.priority === 'high')
+  const top = [...overdue, ...due].slice(0, 3)
+  return (
+    <Card>
+      <div className="flex items-center justify-between">
+        <h3 className="font-display text-lg font-extrabold">Collections</h3>
+        <button onClick={() => actions.openTab('reminders')} className="min-h-11 px-2 text-sm font-bold text-forest">All reminders →</button>
+      </div>
+      <div className="flex flex-wrap gap-2 mb-2">
+        <Chip tone={due.length ? 'warn' : 'plain'}>Due today {due.length}</Chip>
+        <Chip tone={overdue.length ? 'bad' : 'plain'}>Overdue {overdue.length}</Chip>
+        <Chip tone={high.length ? 'bad' : 'plain'}>High priority {high.length}</Chip>
+      </div>
+      {top.length ? (
+        <ul className="divide-y divide-line">{top.map((c) => (
+          <li key={c.id} className="flex items-center gap-3 py-2">
+            <Avatar name={c.customer_name} size="w-9 h-9 text-sm" />
+            <span className="min-w-0 flex-1"><span className="block font-bold truncate">{c.customer_name}</span><span className="text-xs text-muted">{dmy(c.due_date)}{c.urgency === 'overdue' ? ` · ${c.days_overdue}d late` : ''}</span></span>
+            <Chip tone={PRIO[c.priority][0]}>{PRIO[c.priority][1]}</Chip>
+            <span className="font-display font-extrabold">{inr(c.amount_paise ?? Math.max(c.balance_paise, 0))}</span>
+          </li>))}</ul>
+      ) : <p className="text-muted">Nothing due right now.</p>}
+      {upcoming[0] && <p className="text-xs text-muted mt-2">Next: {upcoming[0].customer_name}, {dmy(upcoming[0].due_date)}</p>}
+    </Card>
+  )
+}
+
+// Optional input for people who dictate with their own tool (for example Wispr Flow). It is a plain text box: Khata Bol
+// does not connect to Wispr Flow, cannot tell which tool produced the text, and never saves anything without a confirmation.
+function Dictation({ busy, actions }) {
+  const [t, setT] = useState('')
+  return (
+    <details className="w-full max-w-md bg-card border border-line rounded-2xl px-4">
+      <summary className="min-h-12 flex items-center font-bold cursor-pointer">Dictate with Wispr Flow (optional)</summary>
+      <div className="pb-3">
+        <p className="text-sm text-muted">If you have Wispr Flow, click the box and dictate with your own Wispr Flow shortcut. This uses <b>Wispr Flow's microphone, not Khata Bol's</b>, and Khata Bol is not connected to Wispr Flow's service: it only reads the text that appears. Nothing is saved until you confirm.</p>
+        <form onSubmit={(e) => { e.preventDefault(); if (t.trim()) { actions.dictated(t.trim()); setT('') } }} className="mt-2 grid gap-2">
+          <textarea value={t} onChange={(e) => setT(e.target.value)} rows={2} aria-label="Dictation input" placeholder="Click here, then dictate: “Ramesh ko 500 rupaye udhaar diye”"
+            className="w-full bg-paper border border-line rounded-xl px-3 py-2 text-base outline-none" />
+          <Btn tone="soft" disabled={busy || !t.trim()}>Use this text</Btn>
+        </form>
+      </div>
+    </details>
   )
 }

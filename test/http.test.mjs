@@ -83,3 +83,76 @@ test('every SQL statement is parameterised (no string-built queries with user da
   }
   assert.ok(L)
 })
+
+// ---------------------------------------------------------------- reports and reminders over HTTP
+const { istYmd, addDays } = await import('../server/dates.js')
+
+test('report endpoints come from the database, validate input, and need a session', async () => {
+  const app = createApp(openDb(':memory:'))
+  const d = await call(app, 'get', '/api/reports/daily', { session: A })
+  assert.equal(d.status, 200)
+  assert.deepEqual([d.body.kind, d.body.date], ['daily', istYmd()])
+  assert.ok(d.body.outstanding_paise > 0 && Array.isArray(d.body.due_today) && Array.isArray(d.body.overdue))
+  const w = (await call(app, 'get', '/api/reports/weekly', { session: A })).body
+  assert.equal(w.kind, 'weekly')
+  assert.equal(w.to, istYmd()); assert.equal(w.from, addDays(istYmd(), -6))
+  assert.equal((await call(app, 'get', '/api/reports/daily?date=2026-02-30', { session: A })).status, 400)
+  assert.equal((await call(app, 'get', '/api/reports/daily?date=bad', { session: A })).status, 400)
+  assert.equal((await call(app, 'get', '/api/reports/weekly')).status, 400)
+  const st = (await call(app, 'get', '/api/state', { session: A })).body
+  assert.equal(st.report.date, istYmd()) // Home shows the same report
+})
+
+test('reminder API: create, sort, update, complete, cancel with validation; closed ones are final', async () => {
+  const app = createApp(openDb(':memory:'))
+  const customers = (await call(app, 'get', '/api/state', { session: A })).body.customers
+  const ramesh = customers.find((c) => c.name === 'Ramesh').id
+  const due = addDays(istYmd(), 4)
+  const make = (extra = {}) => call(app, 'post', '/api/followups', { session: A, body: { key: `key-${Math.random().toString(36).slice(2, 12)}`, customerId: ramesh, dueDate: due, ...extra } })
+  const ok = await make({ priority: 'high', amountPaise: 150000 })
+  assert.equal(ok.status, 200); assert.equal(ok.body.commitment.priority, 'high')
+  assert.equal((await make()).body.duplicate, true) // same customer, same day
+  assert.equal((await make({ dueDate: istYmd(new Date(Date.now() - 864e5 * 3)) })).status, 400) // past
+  assert.equal((await make({ dueDate: addDays(due, 1), priority: 'urgent' })).status, 400)
+  assert.equal((await make({ dueDate: addDays(due, 1), amountPaise: 1.5 })).status, 400)
+  assert.equal((await make({ dueDate: addDays(due, 1), customerId: 999999 })).status, 404)
+  assert.equal((await make({ dueDate: addDays(due, 1), customerId: 'x' })).status, 400)
+  const id = ok.body.commitment.id
+  const upd = await call(app, 'post', `/api/followups/${id}/update`, { session: A, body: { dueDate: addDays(due, 2), priority: 'low' } })
+  assert.deepEqual([upd.body.due_date, upd.body.priority], [addDays(due, 2), 'low'])
+  const list = (await call(app, 'get', '/api/followups?sort=priority', { session: A })).body
+  assert.ok(list.some((c) => c.id === id && c.urgency === 'upcoming'))
+  assert.equal((await call(app, 'post', `/api/followups/${id}/complete`, { session: A })).body.status, 'completed')
+  assert.equal((await call(app, 'post', `/api/followups/${id}/cancel`, { session: A })).status, 409) // already completed
+  assert.equal((await call(app, 'post', `/api/followups/${id}/update`, { session: A, body: { priority: 'high' } })).status, 409)
+  const hist = (await call(app, 'get', `/api/followups/${id}/history`, { session: A })).body
+  assert.deepEqual(hist.map((h) => h.event), ['created', 'rescheduled', 'priority', 'completed'])
+  assert.equal((await call(app, 'post', '/api/followups/not-an-id!/cancel', { session: A })).status, 400)
+})
+
+test('another visitor cannot see, change or close your reminders, or your notifications', async () => {
+  const app = createApp(openDb(':memory:'))
+  const ramesh = (await call(app, 'get', '/api/state', { session: A })).body.customers.find((c) => c.name === 'Ramesh').id
+  const id = (await call(app, 'post', '/api/followups', { session: A, body: { key: 'cross-session-key-1', customerId: ramesh, dueDate: addDays(istYmd(), 2) } })).body.commitment.id
+  assert.equal((await call(app, 'get', '/api/followups', { session: B })).body.some((c) => c.id === id), false)
+  for (const path of ['update', 'complete', 'cancel']) assert.equal((await call(app, 'post', `/api/followups/${id}/${path}`, { session: B, body: {} })).status, 404)
+  assert.deepEqual((await call(app, 'get', `/api/followups/${id}/history`, { session: B })).body, [])
+  // B cannot create a reminder for A's customer id
+  assert.equal((await call(app, 'post', '/api/followups', { session: B, body: { key: 'cross-session-key-2', customerId: ramesh, dueDate: addDays(istYmd(), 2) } })).status, 404)
+  assert.equal((await call(app, 'post', '/api/notifications/ack', { session: B, body: { commitmentId: id, key: `${addDays(istYmd(), 2)}T00:00` } })).body.ok, false)
+  assert.equal((await call(app, 'get', '/api/followups', { session: A })).body.some((c) => c.id === id && c.status === 'open'), true) // untouched
+})
+
+test('notifications: only real, due items; delivery is recorded once', async () => {
+  const app = createApp(openDb(':memory:'))
+  const state = (await call(app, 'get', '/api/state', { session: A })).body
+  const due = (await call(app, 'get', '/api/notifications/due', { session: A })).body
+  // demo: Kavita is due today and owes money, Suresh is overdue and owes money; Rameshwar is upcoming (not due)
+  assert.deepEqual(due.map((n) => n.customer_name).sort(), ['Kavita', 'Suresh'])
+  const n = due[0]
+  assert.deepEqual((await call(app, 'post', '/api/notifications/ack', { session: A, body: { commitmentId: n.id, key: n.fire_key } })).body, { ok: true, duplicate: false })
+  assert.deepEqual((await call(app, 'post', '/api/notifications/ack', { session: A, body: { commitmentId: n.id, key: n.fire_key } })).body, { ok: true, duplicate: true })
+  assert.equal((await call(app, 'get', '/api/notifications/due', { session: A })).body.length, 1)
+  assert.equal((await call(app, 'post', '/api/notifications/ack', { session: A, body: { commitmentId: 'bad', key: 'x' } })).status, 400)
+  assert.ok(state.report)
+})

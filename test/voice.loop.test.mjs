@@ -223,3 +223,38 @@ test('an answer to an older question is refused by the server, not applied to a 
   assert.equal(r.bal('Suresh'), 45000)
   r.v.dispose()
 })
+
+test('briefing is spoken only when asked, from real data, and never opens the microphone', async () => {
+  const r = rig()
+  await tick(40)
+  assert.equal(r.said.length, 0) // opening the app and loading data say nothing by themselves
+  r.v.briefing()
+  await until(() => r.said.length === 1, 'briefing spoken')
+  assert.match(r.said[0], /^Namaste\. Aaj 1 payments due hain\. Kavita ki 800 rupaye ki payment high priority hai\. 1 payments overdue hain\./)
+  await tick(40)
+  assert.equal(r.log.filter((e) => e === 'listen:start').length, 0) // it is a statement, not a question
+  assert.equal(r.v.state.mode, 'idle')
+  r.v.dispose()
+})
+
+test('text from a dictation tool is labelled as dictated and still needs a confirmation', async () => {
+  const r = rig()
+  r.heardQueue.push('HOLD')
+  r.v.submitText('Ramesh ko 500 rupaye udhaar diye', 'dictation')
+  await until(() => r.v.state.reply?.card?.kind === 'pending', 'confirmation card')
+  assert.equal(r.v.state.source, 'dictation')
+  assert.equal(r.bal('Ramesh'), 0) // nothing saved by dictating
+  r.v.dispose()
+})
+
+test('date/time choices from buttons are answered through the same loop', async () => {
+  const r = rig()
+  r.heardQueue.push('HOLD')
+  r.v.submitText('Priya ki payment next friday ko due hai')
+  await until(() => r.v.state.reply?.card?.kind === 'optionchoice', 'asked which date')
+  const first = r.v.state.reply.card.options[0].value
+  r.v.option(first)
+  await until(() => r.v.state.reply?.card?.kind === 'followup', 'confirmation of the chosen date')
+  assert.equal(r.v.state.reply.card.date, first)
+  r.v.dispose()
+})

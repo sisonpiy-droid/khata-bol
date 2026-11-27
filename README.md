@@ -1,7 +1,7 @@
 # Khata Bol · खाता बोल
 
 **Your shop's accounts, just a conversation away.**
-A voice-first udhaar (credit) ledger for India's kirana shopkeepers. Speak the entry, hear it read back, say "haan", and it is saved. Category: Livelihoods and Small Business.
+A voice-first udhaar (credit) ledger and payment follow-up assistant for India's kirana shopkeepers. Speak the entry, hear it read back, say "haan", and it is saved. Then ask for the day's accounts, set a payment promise, and get reminded. Category: Livelihoods and Small Business.
 
 ## Run it
 
@@ -14,7 +14,7 @@ No `.env` and no API keys are needed. Without Docker:
 ```bash
 npm install
 npm run dev              # app on http://localhost:5173, API on :8787 (Node 22.13+)
-npm test                 # 65 tests: ledger, dialogue, security, voice loop (simulated recognizer)
+npm test                 # 104 tests: ledger, reports, reminders, dates, dialogue, security, voice loop (simulated recognizer)
 ```
 
 Use **Chrome** and allow the microphone. `localhost` counts as secure, so voice works without HTTPS.
@@ -35,6 +35,31 @@ Use **Chrome** and allow the microphone. `localhost` counts as secure, so voice 
 | "Aaj ka hisaab batao" | Today's real credit given and payments received |
 
 Informal talk works too: "Ramesh ko 500 ka samaan diya", "Ab total batao" (this customer) vs "Total kitna baaki hai?" (everyone), "Aaj kitna udhaar diya?", "Nahi, paanch sau nahi, teen sau" (the last amount wins), "Kal wale 300 cancel kar do" (reverses that entry after confirmation), "Rameshwar ko add karo" (adds a customer after confirmation).
+
+## Reports, reminders and the daily briefing
+
+| Say | Khata Bol does |
+|---|---|
+| "Aaj ka hisaab batao" / "Aaj kitna udhaar diya?" / "Aaj kitni payment aayi?" | Today's credit given, repayments received, payments due today and overdue, from real rows |
+| "Is hafte ka hisaab batao" / "Pichhle saat din mein kitni payment mili?" | Rolling 7-day report: credit, repayments, net change, outstanding, who owes most, overdue |
+| "Sabse zyada udhaar kiska baaki hai?" / "Kitni payment overdue hai?" / "Kaunse customers ki payment overdue hai?" | Reads the answer aloud |
+| "Ramesh ko paanch tareekh tak payment karni hai" / "Priya se paanch tareekh ko paise lene hain" | Proposes the real date ("Monday 5 January"), saves a payment commitment only after "haan" |
+| "Kal mujhe Ramesh ka payment yaad dilana" / "Kal subah nau baje Suresh ka reminder laga do" | Same, with an optional time (Asia/Kolkata) |
+| "Iski payment Friday ko due hai" then "Isko high priority kar do" | "iski/isko" = the customer or reminder just discussed; asks before saving |
+| "Ramesh ka reminder Monday kar do" / "Priya ka reminder cancel karo" / "Ramesh ki payment mil gayi" | Reschedule / cancel / asks the amount, then offers to complete the settled reminder |
+| "Kal kaunse payments due hain?" / "Kal ki urgent payments batao" / "Is week sabse pehle kisse paise lene hain?" | Spoken, deterministic list (chosen priority first, then date) |
+| **Hear today's briefing** button | Short spoken summary: due today, high-priority, overdue, total outstanding. Never plays automatically |
+
+- **Reports** screen: Daily and Weekly, date range, refresh and last-updated time, CSV download and print. **Reminders** screen: Overdue, Due today, Upcoming, Completed; sort by date, amount or priority; reschedule, priority, complete, cancel; a polite message you can copy or share yourself.
+- A reminder is a *payment commitment* (customer, due date, optional time, optional expected amount, priority, note, status). It is stored in its own tables and **never changes a balance**; only confirmed credit, repayment and reversal entries do.
+- **Urgency vs priority:** "overdue / due today / upcoming" is computed from the date. "High / medium / low" is the shopkeeper's own choice and is never changed automatically.
+- **Dates are never guessed:** "next Friday", "Friday" said on a Friday, or a bare "nau baje" ask which one. A past date is refused and asked again. "5 tareekh" means the next real 5th and the confirmation states the full date.
+- **Notifications:** in-app banner and, if permission is granted, a browser notification **while the app is open**. Each delivery is recorded once (idempotent), so repeated checks never repeat a notice, and restarts do not lose commitments. There is **no background scheduler**: nothing is sent when the site is closed, and WhatsApp/SMS are not used.
+- No sales, profit or cash-flow figures are shown because the ledger does not record them.
+
+## Wispr Flow
+
+Khata Bol's own microphone uses browser speech recognition (or optional Gemini audio). Wispr Flow has an official developer API available by approval only, which we do not have, so it is **not integrated**. Wispr Flow users can dictate into an optional, labelled dictation field; see [WISPR-FLOW-WORKFLOW.md](WISPR-FLOW-WORKFLOW.md) for the verified status and the evidence checklist.
 
 ## Product rules (all tested)
 - **Nothing is saved without an explicit yes** for the entry just read back. The yes carries that entry's id, so an answer to an old question can never confirm a newer one.
@@ -66,7 +91,7 @@ mic -> speech recognition -> text ──> POST /api/converse ──> state machi
 
 Deploy: `railway.json` + `Dockerfile` run as one Node service; `/health` reports readiness. Steps in [RAILWAY.md](RAILWAY.md).
 
-Folders: `server/` (API, ledger, parser, dialogue), `src/` (React UI, voice, state machine), `test/`, `Dockerfile`, `compose.yaml`.
+Folders: `server/` (API, ledger, reports, commitments, dates, parser, dialogue), `src/` (React UI, voice, state machine), `test/`, `Dockerfile`, `compose.yaml`.
 
 ## Languages
 

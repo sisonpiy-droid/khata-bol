@@ -37,6 +37,21 @@ Automated tests and a simulated-recognizer run prove the logic and the listen �
 | "Ramesh ne 200 wapas diye" when Ramesh owes less | Warns that the excess becomes an advance, asks before saving |
 | "Ab total batao" / "Total kitna baaki hai?" | This customer's balance / everyone's total |
 
+## C2. Reports and reminders (new)
+| Say | Expected |
+|---|---|
+| "Aaj ka hisaab batao" | Credit given, payments received, customers due today, overdue |
+| "Ramesh ko kal payment ke liye yaad dilana" | Asks "...reminder <real date> ke liye set karun?"; "haan" saves; the Reminders tab shows it |
+| "Kal subah nau baje Suresh ka reminder laga do" | Date and "9 baje subah" repeated back before saving |
+| "Nau baje reminder" (no morning/evening) | Asks which one |
+| "Iski payment Friday ko due hai" right after a credit entry | Uses that customer; if today is Friday it asks today or next week |
+| "Isko high priority kar do" | Asks, then changes priority |
+| "Ramesh ki payment mil gayi" | Asks the amount; after "haan" may offer to complete the reminder |
+| "Kaunse customers ki payment overdue hai?" | Names them with amounts |
+| Tap **Hear today's briefing** | Short spoken summary only when pressed |
+| Dictate into the Wispr Flow field (if installed) | Text appears, "You dictated" label, confirmation card, nothing saved until confirmed |
+| Allow browser notifications, leave the app open, wait for a reminder time | Pop-up appears once. Close the tab: nothing is sent (expected) |
+
 ## D. Failure handling
 - Block the microphone (lock icon → Microphone → Block), tap mic: clear instructions appear; allow and reload fixes it.
 - Turn off Wi-Fi, then speak a command: "server se connect nahi ho paaya. Kuch save nahi hua." plus **Try again**; nothing is saved. Turn Wi-Fi on, tap **Try again**: it works once.

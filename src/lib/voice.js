@@ -25,7 +25,7 @@ export const AGAIN = 'Maaf kijiye, dobara boliye.'
 export function createVoice(deps) {
   const quietMs = deps.quietMs ?? 450
   let vm = initial, gen = 0, alive = true, stopListening = null
-  const snap = { heard: null, interim: '', reply: null, err: null, retry: null, pid: null }
+  const snap = { heard: null, interim: '', reply: null, err: null, retry: null, pid: null, source: 'voice' } // source: voice | typed | dictation (never claimed to be a specific tool)
   const emit = () => deps.onChange?.({ ...snap, mode: vm.name, dlg: vm.dlg, canRetry: !!snap.retry })
   const send = (e) => { vm = reduce(vm, e); emit(); return vm }
   const busy = () => vm.name === 'processing' || vm.name === 'saving'
@@ -38,20 +38,20 @@ export function createVoice(deps) {
     if (vm.name === 'speaking' || vm.name === 'listening') send({ type: 'STOP' })
   }
 
-  async function turn(body, voice = false) {
+  async function turn(body, voice = false, source = voice ? 'voice' : 'typed') {
     if (!alive || busy()) return // one request at a time: a double tap cannot double-submit
     if (!voice) interrupt() // a spoken turn arrives while we are 'listening'; taps interrupt whatever is going on
     const g = gen
     send({ type: voice ? 'HEARD' : body.action === 'confirm' ? 'CONFIRM' : 'TYPED' })
     if (!busy()) return
-    if (body.text != null) snap.heard = body.text
+    if (body.text != null) { snap.heard = body.text; snap.source = source }
     snap.err = null; snap.retry = null; emit()
     let r
     try {
       r = await deps.converse({ ...body, lang: deps.getLang(), reply: deps.getReplyLang(), pid: body.pid ?? snap.pid })
     } catch {
       if (!alive) return
-      snap.err = OFFLINE; snap.retry = { body, voice } // never pretend it was saved; the same body (same pending id) is safe to resend
+      snap.err = OFFLINE; snap.retry = { body, voice, source } // never pretend it was saved; the same body (same pending id) is safe to resend
       send({ type: 'FAIL' }); send({ type: 'STOP' })
       return deps.speak(OFFLINE)
     }
@@ -111,13 +111,15 @@ export function createVoice(deps) {
       if (vm.name === 'speaking') interrupt() // talk over the app: stop its voice, then listen
       listenOnce(0)
     },
-    submitText: (text) => turn({ text }, false),
+    submitText: (text, source = 'typed') => turn({ text }, false, source),
+    briefing: () => turn({ action: 'briefing' }),
+    option: (value) => turn({ action: 'option', choice: value }),
     confirm: () => turn({ action: 'confirm', pid: snap.pid }),
     cancel: () => turn({ action: 'cancel' }),
     choose: (id) => turn({ action: 'choose', choice: id }),
     chooseType: (t) => turn({ action: 'type', choice: t }),
     reverse: (txnId) => turn({ action: 'reverse', txnId }),
-    retry() { const r = snap.retry; if (r) { snap.retry = null; turn(r.body, false) } },
+    retry() { const r = snap.retry; if (r) { snap.retry = null; turn(r.body, false, r.source) } },
     // The tab went to the background: stop the microphone and the voice. The pending entry stays on the server.
     hidden: interrupt,
     // Page (re)loaded: show an unfinished entry again without speaking or listening (browsers need a tap first).

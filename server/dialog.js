@@ -40,7 +40,11 @@ function loadCtx(db, id) {
 const saveCtx = (db, id, ctx) =>
   db.prepare('INSERT OR REPLACE INTO conversations (id, ctx, updated_at) VALUES (?, ?, ?)').run(id, JSON.stringify(ctx), new Date().toISOString())
 
-const blank = { isYes: false, isNo: false, isCancel: false, isBalance: false, isSummary: false, isReverse: false, hasCredit: false, hasPayment: false, amountPaise: null, nameRef: null, recognised: true }
+const blank = {
+  isYes: false, isNo: false, isCancel: false, isBalance: false, isSummary: false, isReverse: false, hasCredit: false, hasPayment: false, amountPaise: null, nameRef: null, recognised: true,
+  report: null, isFollowUp: false, followEdit: false, cancelFollowUp: false, setPriority: false, priority: null, pronoun: false,
+  when: { date: null, rolled: false, dateOptions: null, time: null, timeOptions: null, daypart: null }, // button actions carry no spoken date
+}
 
 // Trust boundary: everything from the client is checked here, whatever route it arrived by.
 function clean(b) {
@@ -410,7 +414,9 @@ function step(db, ctx, f, lang, customers, shopId, now) {
     if (f.statusOnly) return prompt()
     if (f.specificReverse) { ctx.pending = null; return startReverse(f) }
     if (f.report) { const keep = ctx.pending; const a = reportReply(f.report); ctx.pending = keep; const re = prompt(); return { ...re, say: `${a.say} ${re.say}` } } // answer the question, then repeat the open one
-    const followCmd = f.cancelFollowUp || f.setPriority || f.followEdit || (f.isFollowUp && p.kind !== 'follow')
+    // A full new reminder command that names a different customer is a NEW draft (new id); "Nahi, Suresh" is a correction of the open one.
+    const otherCustomer = f.nameRef && f.nameRef.status !== 'new' && !(f.nameRef.status === 'match' && f.nameRef.customer.id === p.customerId)
+    const followCmd = f.cancelFollowUp || f.setPriority || f.followEdit || (f.isFollowUp && (p.kind !== 'follow' || otherCustomer))
     if (followCmd) { ctx.pending = null; return startFollow(f, f.cancelFollowUp ? 'cancel' : f.setPriority ? 'priority' : f.followEdit ? 'reschedule' : 'create') }
     if (f.isCancel || (f.isNo && f.amountPaise == null && !f.nameRef && !f.when.date && !f.when.dateOptions && !f.priority)) return cancel()
     if (f.isReverse) { ctx.pending = null; return startReverse(f) }
