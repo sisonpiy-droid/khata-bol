@@ -14,6 +14,12 @@ import { parse } from './nlu.js'
 import { matchCustomer, score } from './match.js'
 import { aiParse, aiConfigured } from './llm.js'
 import { say as T } from './say.js'
+import * as F from './follow.js'
+import { answer } from './answers.js'
+import { isHm, isYmd, istHm, istYmd, label, timeLabel } from './dates.js'
+
+// Tests replace this to fix "now"; production always uses the real clock.
+export const clock = { now: () => new Date() }
 
 const MIN_PAISE = 100
 const BIG_PAISE = 500000 // Rs 5,000: ask the shopkeeper to double-check
@@ -21,7 +27,7 @@ const PENDING_TTL = 5 * 60 * 1000
 const CONTEXT_WORDS = /\b(ab|abhi|unhone|usne|woh|wo|same|him|her|them)\b/
 const ID_RE = /^[\w-]{8,64}$/
 const LANG_RE = /^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8}){0,2}$/
-const ACTIONS = new Set(['greet', 'status', 'confirm', 'cancel', 'choose', 'type', 'reverse'])
+const ACTIONS = new Set(['greet', 'status', 'confirm', 'cancel', 'choose', 'type', 'reverse', 'option', 'briefing'])
 
 const fresh = () => ({ state: 'idle', customerId: null, lastTxnId: null, pending: null })
 const rup = (paise) => String(Math.round(Math.abs(paise)) / 100)
@@ -50,6 +56,7 @@ function clean(b) {
   let choice = b.choice ?? null
   if (action === 'choose' && !(Number.isInteger(choice) && choice >= 0)) throw bad()
   if (action === 'type' && !['credit', 'payment'].includes(choice)) throw bad()
+  if (action === 'option' && !/^(\d{4}-\d{2}-\d{2}|[0-2]\d:[0-5]\d)$/.test(String(choice))) throw bad()
   if (action === 'reverse' && !txnId) throw bad()
   return { session: String(b.session), text, action, lang, reply, pid, txnId, choice }
 }
@@ -75,6 +82,7 @@ async function run(db, { session, text, action, choice, txnId, lang, reply: repl
   let expired = false
   if (ctx.pending && Date.now() - (ctx.at ?? 0) > PENDING_TTL) { ctx.pending = null; ctx.state = 'idle'; expired = true }
   const customers = L.listCustomers(db, shopId)
+  const now = clock.now()
   if (action === 'greet') return { say: T(tl, 'greet'), state: ctx.state, expect: null, card: null, pid: ctx.pending?.id ?? null }
 
   let f
@@ -82,11 +90,14 @@ async function run(db, { session, text, action, choice, txnId, lang, reply: repl
   else if (action === 'cancel') f = { ...blank, isCancel: true }
   else if (action === 'status') f = { ...blank, statusOnly: true }
   else if (action === 'type') f = { ...blank, chooseType: choice }
-  else if (action === 'choose') f = choice === 0 ? { ...blank, chooseNew: true } : { ...blank, nameRef: { status: 'match', customer: customers.find((c) => c.id === choice) } }
+  else if (action === 'choose') f = choice === 0 ? { ...blank, chooseNew: true, chooseIdx: 0 } : { ...blank, chooseIdx: choice, nameRef: { status: 'match', customer: customers.find((c) => c.id === choice) } }
+  else if (action === 'option') f = { ...blank, chooseOption: String(choice) }
+  else if (action === 'briefing') f = { ...blank, report: { kind: 'briefing' } }
   else if (action === 'reverse') { ctx.pending = null; ctx.state = 'idle'; f = { ...blank, isReverse: true, reverseId: txnId } }
   else {
-    f = parse(text, customers)
-    if (!f.recognised || (!f.hasCredit && !f.hasPayment && !f.isBalance && !f.isSummary && !f.isReverse && !f.isYes && !f.isNo && !f.isCancel && !f.isAddCustomer && ctx.state === 'idle')) {
+    f = parse(text, customers, { now })
+    const hasIntent = f.report || f.isFollowUp || f.followEdit || f.cancelFollowUp || f.setPriority || f.hasCredit || f.hasPayment || f.isBalance || f.isReverse || f.isYes || f.isNo || f.isCancel || f.isAddCustomer
+    if (!f.recognised || (!hasIntent && ctx.state === 'idle')) {
       // Optional AI sees only the spoken sentence, never customers or balances, and its guess still needs a confirmed read-back.
       const ai = await aiParse(text)
       if (ai) f = fromAi(ai, customers)
@@ -101,7 +112,7 @@ async function run(db, { session, text, action, choice, txnId, lang, reply: repl
 
   const reply = expired && f.isYes && !f.hasCredit && !f.hasPayment
     ? { say: T(tl, 'expired'), state: 'idle', expect: null, card: { kind: 'cancelled' } }
-    : step(db, ctx, f, tl, customers, shopId)
+    : step(db, ctx, f, tl, customers, shopId, now)
   if (ctx.pending) ctx.at = Date.now()
   saveCtx(db, session, ctx)
   return { ...reply, pid: ctx.pending?.id ?? null }
@@ -114,7 +125,7 @@ function fromAi(ai, customers) {
   return f
 }
 
-function step(db, ctx, f, lang, customers, shopId) {
+function step(db, ctx, f, lang, customers, shopId, now) {
   const out = (key, v, extra = {}) => ({ say: T(lang, key, v), state: ctx.state, expect: ctx.state === 'idle' ? null : ctx.state === 'awaiting_confirmation' ? 'confirm' : 'clarify', card: null, ...extra })
   const bal = (id) => L.balanceOf(db, id)
   const nameOf = (id) => customers.find((c) => c.id === id)?.name ?? L.entryById(db, shopId, ctx.lastTxnId)?.customer_name ?? ''
@@ -159,6 +170,7 @@ function step(db, ctx, f, lang, customers, shopId) {
   // Ask the next question for whatever is pending. Pure: only builds a reply.
   function prompt(prefix = false) {
     const p = ctx.pending
+    if (p.kind === 'follow') return fprompt(prefix)
     if (p.kind === 'reversal') {
       ctx.state = 'awaiting_confirmation'
       const e = L.entryById(db, shopId, p.txnId)
@@ -256,9 +268,81 @@ function step(db, ctx, f, lang, customers, shopId) {
     return finish('balance', { name: c.name, balance: b }, { card: { kind: 'balance', customer: { id: c.id, name: c.name }, balance_paise: b } })
   }
 
-  function answerSummary() {
-    const s = L.todaySummary(db, shopId)
-    return finish('summary', { credit: s.credit_paise, payment: s.payment_paise, count: s.count }, { card: { kind: 'summary', ...s } })
+  // Reports and briefings: every figure comes from database queries (answers.js), the wording from say.js.
+  function reportReply(rep) {
+    const a = answer(db, shopId, rep, now)
+    return finish(a.key, a.vars, { card: a.card })
+  }
+  const answerSummary = () => reportReply({ kind: 'daily' })
+
+  // ---------------- payment commitments and reminders ----------------
+  const today = istYmd(now), nowHm = istHm(now)
+  const openOf = (cid) => F.listCommitments(db, shopId, { now }).filter((c) => c.customer_id === cid)
+  const cLabel = (c) => `${label(c.due_date)}${c.due_time ? ` ${timeLabel(c.due_time)}` : ''}${c.amount_paise ? ` · ₹${rup(c.amount_paise)}` : ''}`
+
+  // Merge what was just said about the date/time into the draft. A past date or time is refused and asked again, never moved silently.
+  function applyWhen(p, w) {
+    if (w.date) { p.date = w.date; p.dateOptions = null; p.rolled = !!w.rolled }
+    else if (w.dateOptions) { p.date = null; p.dateOptions = w.dateOptions }
+    if (w.time) { p.time = w.time; p.timeOptions = null }
+    else if (w.timeOptions) { p.time = null; p.timeOptions = w.timeOptions }
+    p.pastMsg = null
+    if (p.date && p.date < today) { p.pastMsg = label(p.date); p.date = null }
+    else if (p.date === today && p.time && p.time < nowHm) { p.pastMsg = `${label(p.date)} ${timeLabel(p.time)}`; p.date = null; p.time = null }
+  }
+
+  // What is still missing? One question at a time: customer, which reminder, date, time. null = ready to confirm.
+  function fsettle(p) {
+    if (!p.customerId) return 'customer'
+    if (p.mode !== 'create' && !p.targetId) {
+      const t = openOf(p.customerId)
+      if (!t.length) { if (p.mode === 'reschedule') p.mode = 'create'; else return 'none' } // "Ramesh ka reminder kal kar do" with none yet: offer to create it
+      else if (t.length === 1) p.targetId = t[0].id
+      else { p.targets = t.map((c) => ({ id: c.id, label: cLabel(c) })); return 'target' }
+    }
+    if (p.mode === 'create' || p.mode === 'reschedule') {
+      if (!p.date) return p.dateOptions ? 'dateopt' : 'date'
+      if (p.timeOptions && !p.time) return 'timeopt'
+    }
+    return null
+  }
+
+  function fprompt(prefix = false) {
+    const p = ctx.pending
+    p.missing = fsettle(p)
+    const name = p.customerId ? nameOf(p.customerId) : ''
+    const ask = (key, v, extra) => { ctx.state = 'awaiting_clarification'; return out(key, v, extra) }
+    if (p.missing === 'customer') return p.candidates ? choiceReply(p.candidates) : ask('clarify_name')
+    if (p.missing === 'none') return finish('no_followup', { name })
+    if (p.missing === 'target') return ask('ask_which_follow', { name }, { card: { kind: 'commitchoice', options: p.targets.map((t, i) => ({ id: i, name: t.label })) } })
+    if (p.missing === 'date') { const r = ask('ask_date', { name }); return p.pastMsg ? { ...r, say: `${T(lang, 'date_past', { date: p.pastMsg })} ${r.say}` } : r }
+    if (p.missing === 'dateopt') return ask('ask_option', {}, { card: { kind: 'optionchoice', field: 'date', options: p.dateOptions } })
+    if (p.missing === 'timeopt') return ask('ask_option', {}, { card: { kind: 'optionchoice', field: 'time', options: p.timeOptions } })
+    ctx.state = 'awaiting_confirmation'
+    const target = p.targetId ? F.listCommitments(db, shopId, { now }).find((c) => c.id === p.targetId) : null
+    const date = p.date ?? target?.due_date ?? null
+    const v = { name, date: date ? label(date) : '', time: p.time ? timeLabel(p.time) : null, amount: p.amountPaise, priority: p.priority }
+    const key = { create: 'confirm_follow', reschedule: 'confirm_resched', priority: 'confirm_priority', cancel: 'confirm_cancel_follow', complete: 'confirm_complete_follow' }[p.mode]
+    const r = out(key, v, { card: { kind: 'followup', mode: p.mode, customer: { id: p.customerId, name }, date, time: p.time, amount_paise: p.amountPaise ?? target?.amount_paise ?? null, priority: p.priority ?? target?.priority ?? null, balance_paise: bal(p.customerId) } })
+    return prefix ? { ...r, say: T(lang, 'understood') + r.say } : r
+  }
+
+  function startFollow(f, mode) {
+    const p = { kind: 'follow', id: randomUUID(), mode, customerId: null, candidates: null, targetId: null, targets: null, date: null, dateOptions: null, rolled: false, time: null, timeOptions: null, pastMsg: null,
+      amountPaise: f.amountPaise ?? null, priority: f.priority ?? (mode === 'create' ? 'medium' : null), said: f.said ?? null, linkLast: !!f.pronoun, missing: null }
+    const ctxWord = f.pronoun || CONTEXT_WORDS.test(f.text ?? '')
+    if (f.nameRef) {
+      if (f.nameRef.status === 'new') return finish('not_found', { name: f.nameRef.name }, { card: { kind: 'error' } }) // never invent a customer for a reminder
+      resolveName(p, f.nameRef)
+      if (p.candidates) p.candidates = p.candidates.filter((c) => !c.isNew)
+    } else if (mode !== 'create' && ctxWord && ctx.lastCommitmentId) { // "Isko high priority kar do" right after setting a reminder
+      const c = F.listCommitments(db, shopId, { now }).find((x) => x.id === ctx.lastCommitmentId)
+      if (c) { p.customerId = c.customer_id; p.targetId = c.id }
+    }
+    if (!p.customerId && !p.candidates && ctxWord && ctx.customerId) p.customerId = ctx.customerId // "Iski payment Friday ko due hai"
+    applyWhen(p, f.when)
+    ctx.pending = p
+    return fprompt()
   }
 
   function commit() {
@@ -270,6 +354,27 @@ function step(db, ctx, f, lang, customers, shopId) {
         const name = L.entryById(db, shopId, r.txn.id).customer_name
         return finish(r.duplicate ? 'duplicate' : 'reverse_done', { name, balance: r.balance_paise }, { changed: true, card: { kind: 'saved', reversal: true, customer: { id: r.txn.customer_id, name }, balance_paise: r.balance_paise } })
       }
+      if (p.kind === 'follow') {
+        const name = nameOf(p.customerId)
+        if (p.mode === 'create') {
+          let txnId = null // link to the credit just recorded only when "iski/isko" was said and it is the same customer's live entry
+          if (p.linkLast && ctx.lastTxnId) {
+            const e = L.entryById(db, shopId, ctx.lastTxnId)
+            if (e && e.customer_id === p.customerId && e.type === 'credit' && !db.prepare('SELECT 1 FROM transactions WHERE reversed_of = ?').get(e.id)) txnId = e.id
+          }
+          const r = F.createCommitment(db, { shopId, customerId: p.customerId, dueDate: p.date, dueTime: p.time, amountPaise: p.amountPaise, priority: p.priority ?? 'medium', txnId, key: p.id, now })
+          ctx.customerId = p.customerId; ctx.lastCommitmentId = r.commitment.id
+          const v = { name, date: label(r.commitment.due_date), time: r.commitment.due_time ? timeLabel(r.commitment.due_time) : null }
+          return finish(r.duplicate ? 'follow_duplicate' : 'follow_saved', v, { changed: !r.duplicate, card: { kind: 'saved', followup: true, customer: { id: p.customerId, name }, date_label: v.date, time_label: v.time, balance_paise: bal(p.customerId) } })
+        }
+        const c = p.mode === 'reschedule' ? F.updateCommitment(db, { shopId, id: p.targetId, dueDate: p.date, dueTime: p.time ?? null, now })
+          : p.mode === 'priority' ? F.updateCommitment(db, { shopId, id: p.targetId, priority: p.priority, now })
+            : F.closeCommitment(db, { shopId, id: p.targetId, status: p.mode === 'cancel' ? 'cancelled' : 'completed', now })
+        ctx.customerId = c.customer_id; ctx.lastCommitmentId = p.mode === 'cancel' ? null : c.id
+        const v = { name, date: label(c.due_date), time: c.due_time ? timeLabel(c.due_time) : null, priority: p.mode === 'priority' ? c.priority : null, late: p.mode === 'complete' && istYmd(now) > c.due_date }
+        const key = { reschedule: 'follow_updated', priority: 'follow_updated', cancel: 'follow_cancelled', complete: 'follow_completed' }[p.mode]
+        return finish(key, v, { changed: true, card: { kind: 'saved', followup: true, customer: { id: c.customer_id, name }, date_label: v.date, balance_paise: bal(c.customer_id) } })
+      }
       if (p.kind === 'customer') {
         const r = L.createCustomer(db, { shopId, name: p.newName, key: p.id })
         ctx.customerId = r.customer.id
@@ -279,8 +384,19 @@ function step(db, ctx, f, lang, customers, shopId) {
       const cid = r.txn.customer_id
       const name = r.customer?.name ?? L.entryById(db, shopId, r.txn.id).customer_name
       ctx.customerId = cid; ctx.lastTxnId = r.txn.id
-      return finish(r.duplicate ? 'duplicate' : `done_${p.type}`, { name, amount: p.amountPaise, balance: r.balance_paise },
+      const resp = finish(r.duplicate ? 'duplicate' : `done_${p.type}`, { name, amount: p.amountPaise, balance: r.balance_paise },
         { changed: !r.duplicate, card: { kind: 'saved', type: p.type, amount_paise: p.amountPaise, customer: { id: cid, name }, balance_paise: r.balance_paise, duplicate: r.duplicate } })
+      // A payment that settles a specific reminder (balance cleared, or the promised amount covered): offer to complete it, never do it silently.
+      if (!r.duplicate && p.type === 'payment') {
+        const settles = openOf(cid).filter((c) => r.balance_paise <= 0 || (c.amount_paise && p.amountPaise >= c.amount_paise))
+        if (settles.length === 1) {
+          const c = settles[0]
+          ctx.pending = { kind: 'follow', id: randomUUID(), mode: 'complete', customerId: cid, targetId: c.id, candidates: null, targets: null, date: null, dateOptions: null, time: null, timeOptions: null, pastMsg: null, amountPaise: null, priority: null, said: null, linkLast: false, missing: null }
+          ctx.state = 'awaiting_confirmation'
+          return { ...resp, say: resp.say + T(lang, 'complete_offer', { name, date: label(c.due_date) }), state: 'awaiting_confirmation', expect: 'confirm', card: { ...resp.card, offer: true } }
+        }
+      }
+      return resp
     } catch (e) {
       // Never pretend it was saved. Keep the pending entry so a retry uses the same idempotency key.
       return { ...out('save_failed'), card: { kind: 'error', detail: e.message } }
@@ -293,11 +409,50 @@ function step(db, ctx, f, lang, customers, shopId) {
     if (f.stale) { const r = prompt(); return { ...r, say: `${T(lang, 'stale')} ${r.say}` } }
     if (f.statusOnly) return prompt()
     if (f.specificReverse) { ctx.pending = null; return startReverse(f) }
-    if (f.isCancel || (f.isNo && f.amountPaise == null && !f.nameRef)) return cancel()
+    if (f.report) { const keep = ctx.pending; const a = reportReply(f.report); ctx.pending = keep; const re = prompt(); return { ...re, say: `${a.say} ${re.say}` } } // answer the question, then repeat the open one
+    const followCmd = f.cancelFollowUp || f.setPriority || f.followEdit || (f.isFollowUp && p.kind !== 'follow')
+    if (followCmd) { ctx.pending = null; return startFollow(f, f.cancelFollowUp ? 'cancel' : f.setPriority ? 'priority' : f.followEdit ? 'reschedule' : 'create') }
+    if (f.isCancel || (f.isNo && f.amountPaise == null && !f.nameRef && !f.when.date && !f.when.dateOptions && !f.priority)) return cancel()
     if (f.isReverse) { ctx.pending = null; return startReverse(f) }
     const newCommand = (f.hasCredit || f.hasPayment) && f.nameRef && f.amountPaise != null && !f.isNo
     if (!newCommand) {
       if (p.kind === 'reversal') return f.isYes ? commit() : unclear()
+      if (p.kind === 'follow') {
+        const m = p.missing
+        if (p.candidates) { // which customer? the draft (dates, priority) is kept, any chosen reminder is dropped
+          if (!pickCandidate(p, f)) return unclear()
+          p.candidates = null; p.targetId = null; p.targets = null
+          return fprompt()
+        }
+        if (f.nameRef && f.nameRef.status !== 'new' && !(f.nameRef.status === 'match' && f.nameRef.customer.id === p.customerId)) { // a different customer is named: nothing silently follows them
+          resolveName(p, f.nameRef); p.targetId = null; p.targets = null
+          if (p.candidates) p.candidates = p.candidates.filter((c) => !c.isNew)
+          return fprompt(true)
+        }
+        if (m === 'customer') return unclear()
+        if (m === 'target') {
+          if (f.chooseIdx == null || !p.targets[f.chooseIdx]) return unclear()
+          p.targetId = p.targets[f.chooseIdx].id
+          return fprompt()
+        }
+        if (m === 'date' || m === 'dateopt') {
+          const v = f.chooseOption && isYmd(f.chooseOption) ? f.chooseOption : f.when.date
+          if (v && (m === 'date' || p.dateOptions.some((o) => o.value === v))) { applyWhen(p, { date: v }); if (f.when.time || f.when.timeOptions) applyWhen(p, f.when); return fprompt() }
+          if (f.when.dateOptions) { applyWhen(p, { dateOptions: f.when.dateOptions }); return fprompt() }
+          return unclear()
+        }
+        if (m === 'timeopt') {
+          const v = f.chooseOption && isHm(f.chooseOption) ? f.chooseOption : f.when.time ?? (f.when.daypart ? p.timeOptions[f.when.daypart === 'am' ? 0 : 1].value : null)
+          if (v && p.timeOptions.some((o) => o.value === v)) { applyWhen(p, { time: v }); return fprompt() }
+          return unclear()
+        }
+        if (f.isYes) return commit() // confirmation stage
+        let changed = false // "nahi, Friday ko": adjust the draft and ask again
+        if (f.when.date || f.when.dateOptions || f.when.time || f.when.timeOptions) { applyWhen(p, f.when); changed = true }
+        if (f.priority && p.mode !== 'cancel' && p.mode !== 'complete') { p.priority = f.priority; changed = true }
+        if (f.amountPaise != null && p.mode === 'create') { p.amountPaise = f.amountPaise; changed = true }
+        return changed ? fprompt(true) : unclear()
+      }
       if (p.kind === 'balance') {
         if (p.candidates && pickCandidate(p, f)) { const c = p.customerId; ctx.pending = null; return answerBalance({ nameRef: { status: 'match', customer: customers.find((x) => x.id === c) } }) }
         if (!p.candidates && f.nameRef) { ctx.pending = null; return answerBalance(f) }
@@ -346,6 +501,11 @@ function step(db, ctx, f, lang, customers, shopId) {
 
   // ---------------- idle ----------------
   if (f.statusOnly) return { say: '', state: 'idle', expect: null, card: null }
+  if (f.report) return reportReply(f.report)
+  if (f.cancelFollowUp) return startFollow(f, 'cancel')
+  if (f.setPriority) return startFollow(f, 'priority')
+  if (f.followEdit) return startFollow(f, 'reschedule')
+  if (f.isFollowUp) return startFollow(f, 'create')
   if (f.isReverse) return startReverse(f)
   if (f.isSummary) return answerSummary()
   if (f.isAddCustomer) return startCustomer(f)

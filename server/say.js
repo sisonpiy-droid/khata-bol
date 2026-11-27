@@ -1,6 +1,15 @@
 // Spoken/written replies. Hindi replies are Hinglish (roman script) so any Hindi or English voice can read them.
 // Languages without templates fall back to Hinglish; we never claim a language is supported when it is not.
 const rs = (paise) => String(Math.round(Math.abs(paise)) / 100)
+
+// ---- helpers for lists and dates in spoken replies
+const HI_DAY = { today: 'Aaj', yesterday: 'Beete kal', tomorrow: 'Kal' }
+const EN_DAY = { today: 'Today', yesterday: 'Yesterday', tomorrow: 'Tomorrow' }
+const hiDay = (d) => HI_DAY[d] ?? d
+const enDay = (d) => EN_DAY[d] ?? d
+const names = (items, lang) => items.slice(0, 4).map((i) => `${i.name}${i.amount > 0 ? ` ${rs(i.amount)} rupaye` : ''}${i.priority === 'high' ? (lang === 'hi' ? ' (high priority)' : ' (high priority)') : ''}`).join(', ') + (items.length > 4 ? `, aur ${items.length - 4} aur` : '')
+const namesEn = (items) => names(items, 'en').replace(/, aur (\d+) aur$/, ', and $1 more')
+const when = (d, t, tl) => `${d}${t ? ` ${tl(t)}` : ''}`
 const kind = (type) => (type === 'credit' ? 'credit' : 'payment')
 
 const hi = {
@@ -38,6 +47,38 @@ const hi = {
   reverse_notfound: (v) => `${v.when ? `${v.when} ka ` : ''}${rs(v.amount)} rupaye ka koi entry nahi mila.`,
   reverse_more: (v) => ` Aisi ${v.n} aur entries hain; yeh sabse nayi hai.`,
   expired: () => 'Woh entry kaafi der pehle ki thi, isliye cancel ho gayi. Dobara boliye.',
+  understood: () => 'Samajh gaya. ',
+  // ---- reports
+  report_daily: (v) => (v.entries ? `${hiDay(v.day)} aapne ${rs(v.credit)} rupaye udhaar diye aur ${rs(v.payment)} rupaye ki payment receive hui.` : `${hiDay(v.day)} koi entry nahi hui.`) + (v.dueCount ? ` ${v.dueCount} customers ki payment ${v.day === 'today' ? 'aaj' : 'us din'} due hai.` : '') + (v.overdueCount ? ` ${v.overdueCount} payments overdue hain.` : ''),
+  report_credit: (v) => `${hiDay(v.day)} aapne ${rs(v.credit)} rupaye udhaar diye.`,
+  report_payment: (v) => `${hiDay(v.day)} ${rs(v.payment)} rupaye ki payment receive hui.`,
+  report_week: (v) => `Pichhle saat din mein ${rs(v.credit)} rupaye udhaar diye aur ${rs(v.payment)} rupaye ki payment mili. Abhi kul ${rs(v.outstanding)} rupaye baaki hain.` + (v.overdueCount ? ` ${v.overdueCount} payments overdue hain.` : '') + (v.top ? ` Sabse zyada ${v.top.name} ke ${rs(v.top.amount)} rupaye baaki hain.` : ''),
+  week_credit: (v) => `Pichhle saat din mein aapne ${rs(v.credit)} rupaye udhaar diye.`,
+  week_payment: (v) => `Pichhle saat din mein ${rs(v.payment)} rupaye ki payment mili.`,
+  due_list: (v) => (v.items.length ? `${hiDay(v.day)} ${v.items.length} ${v.onlyHigh ? 'urgent ' : ''}payments due hain: ${names(v.items, 'hi')}.` : `${hiDay(v.day)} koi ${v.onlyHigh ? 'urgent ' : ''}payment due nahi hai.`),
+  overdue_list: (v) => (v.items.length ? `${v.items.length} customers ki payment overdue hai: ${names(v.items, 'hi')}.` : 'Koi payment overdue nahi hai.'),
+  overdue_total: (v) => (v.count ? `${v.count} payments overdue hain, in customers ke kul ${rs(v.total)} rupaye baaki hain.` : 'Koi payment overdue nahi hai.'),
+  top_debtor: (v) => (v.top ? `Sabse zyada ${v.top.name} ke ${rs(v.top.amount)} rupaye baaki hain.` : 'Abhi kisi ka udhaar baaki nahi hai.'),
+  collect_first: (v) => (v.items.length ? `Is hafte sabse pehle ${names(v.items, 'hi')}.` : 'Is hafte ke liye koi payment tay nahi hai.'),
+  briefing: (v) => 'Namaste. ' + (v.dueCount ? `Aaj ${v.dueCount} payments due hain.` : 'Aaj koi payment due nahi hai.') + (v.top ? ` ${v.top.name} ki ${rs(v.top.amount)} rupaye ki payment high priority hai.` : '') + (v.overdueCount ? ` ${v.overdueCount} payments overdue hain.` : '') + ` Kul ${rs(v.outstanding)} rupaye baaki hain, ${v.owing} customers ke.`,
+  // ---- reminders and payment commitments
+  confirm_follow: (v) => `${v.name} ki payment ka reminder ${when(v.date, v.time, (t) => t)} ke liye set karun?${v.amount ? ` (${rs(v.amount)} rupaye)` : ''}${v.priority && v.priority !== 'medium' ? ` ${v.priority} priority.` : ''}`,
+  confirm_resched: (v) => `${v.name} ka reminder ${when(v.date, v.time, (t) => t)} par le jaun?`,
+  confirm_priority: (v) => `${v.name} ki payment (${v.date}) ko ${v.priority} priority karun?`,
+  confirm_cancel_follow: (v) => `${v.name} ka ${v.date} wala reminder cancel karun?`,
+  confirm_complete_follow: (v) => `${v.name} ka ${v.date} wala reminder complete mark karun?`,
+  follow_saved: (v) => `Ho gaya. ${v.name} ki payment ka reminder ${when(v.date, v.time, (t) => t)} ke liye set hai.`,
+  follow_updated: (v) => `Ho gaya. ${v.name} ka reminder ab ${when(v.date, v.time, (t) => t)} ko hai${v.priority ? `, ${v.priority} priority` : ''}.`,
+  follow_cancelled: (v) => `${v.name} ka reminder cancel kar diya.`,
+  follow_completed: (v) => `${v.name} ka reminder complete mark kar diya.${v.late ? ' Yeh due date ke baad mila.' : ''}`,
+  follow_duplicate: (v) => `${v.name} ka ${v.date} ka reminder pehle se maujood hai. Dobara nahi banaya.`,
+  complete_offer: (v) => ` ${v.name} ka ${v.date} wala reminder complete mark karun?`,
+  ask_date: (v) => `${v.name} ki payment kis tareekh ko leni hai?`,
+  ask_option: () => 'Kaun si wali? Ek chuniye.',
+  ask_which_follow: (v) => `${v.name} ke kai reminders hain. Kaun sa?`,
+  date_past: (v) => `${v.date} beet chuka hai. Aage ki tareekh boliye.`,
+  no_followup: (v) => `${v.name} ka koi reminder nahi mila.`,
+  follow_failed: (v) => `Reminder save nahi ho paaya: ${v.reason}. Kuch save nahi hua.`,
 }
 
 const en = {
@@ -75,6 +116,38 @@ const en = {
   reverse_notfound: (v) => `I could not find a ${v.when ? `${v.when} ` : ''}${rs(v.amount)} rupee entry.`,
   reverse_more: (v) => ` There are ${v.n} more like it; this is the newest.`,
   expired: () => 'That entry was too old, so it was cancelled. Please say it again.',
+  understood: () => 'Understood. ',
+  // ---- reports
+  report_daily: (v) => (v.entries ? `${enDay(v.day)} you gave ${rs(v.credit)} rupees on credit and received ${rs(v.payment)} rupees in payments.` : `No entries ${v.day === 'today' ? 'yet today' : v.day}.`) + (v.dueCount ? ` ${v.dueCount} customers have payments due.` : '') + (v.overdueCount ? ` ${v.overdueCount} payments are overdue.` : ''),
+  report_credit: (v) => `${enDay(v.day)} you gave ${rs(v.credit)} rupees on credit.`,
+  report_payment: (v) => `${enDay(v.day)} you received ${rs(v.payment)} rupees in payments.`,
+  report_week: (v) => `In the last seven days you gave ${rs(v.credit)} rupees on credit and received ${rs(v.payment)} rupees. ${rs(v.outstanding)} rupees is outstanding now.` + (v.overdueCount ? ` ${v.overdueCount} payments are overdue.` : '') + (v.top ? ` ${v.top.name} owes the most: ${rs(v.top.amount)} rupees.` : ''),
+  week_credit: (v) => `In the last seven days you gave ${rs(v.credit)} rupees on credit.`,
+  week_payment: (v) => `In the last seven days you received ${rs(v.payment)} rupees in payments.`,
+  due_list: (v) => (v.items.length ? `${enDay(v.day)} ${v.items.length} ${v.onlyHigh ? 'urgent ' : ''}payments are due: ${namesEn(v.items)}.` : `No ${v.onlyHigh ? 'urgent ' : ''}payments are due ${v.day === 'today' ? 'today' : v.day}.`),
+  overdue_list: (v) => (v.items.length ? `${v.items.length} customers have overdue payments: ${namesEn(v.items)}.` : 'No payments are overdue.'),
+  overdue_total: (v) => (v.count ? `${v.count} payments are overdue; those customers owe ${rs(v.total)} rupees in total.` : 'No payments are overdue.'),
+  top_debtor: (v) => (v.top ? `${v.top.name} owes the most: ${rs(v.top.amount)} rupees.` : 'Nobody owes anything right now.'),
+  collect_first: (v) => (v.items.length ? `This week, collect first from ${namesEn(v.items)}.` : 'No payments are planned for this week.'),
+  briefing: (v) => 'Namaste. ' + (v.dueCount ? `${v.dueCount} payments are due today.` : 'No payments are due today.') + (v.top ? ` ${v.top.name}'s ${rs(v.top.amount)} rupee payment is high priority.` : '') + (v.overdueCount ? ` ${v.overdueCount} payments are overdue.` : '') + ` ${rs(v.outstanding)} rupees is outstanding across ${v.owing} customers.`,
+  // ---- reminders and payment commitments
+  confirm_follow: (v) => `Set a payment reminder for ${v.name} on ${when(v.date, v.time, (t) => t)}?${v.amount ? ` (${rs(v.amount)} rupees)` : ''}${v.priority && v.priority !== 'medium' ? ` ${v.priority} priority.` : ''}`,
+  confirm_resched: (v) => `Move ${v.name}'s reminder to ${when(v.date, v.time, (t) => t)}?`,
+  confirm_priority: (v) => `Make ${v.name}'s payment (${v.date}) ${v.priority} priority?`,
+  confirm_cancel_follow: (v) => `Cancel ${v.name}'s reminder for ${v.date}?`,
+  confirm_complete_follow: (v) => `Mark ${v.name}'s reminder for ${v.date} as complete?`,
+  follow_saved: (v) => `Done. Reminder for ${v.name} is set for ${when(v.date, v.time, (t) => t)}.`,
+  follow_updated: (v) => `Done. ${v.name}'s reminder is now on ${when(v.date, v.time, (t) => t)}${v.priority ? `, ${v.priority} priority` : ''}.`,
+  follow_cancelled: (v) => `${v.name}'s reminder was cancelled.`,
+  follow_completed: (v) => `${v.name}'s reminder is marked complete.${v.late ? ' It was paid after the due date.' : ''}`,
+  follow_duplicate: (v) => `${v.name} already has a reminder for ${v.date}. I did not add another.`,
+  complete_offer: (v) => ` Mark ${v.name}'s reminder for ${v.date} as complete?`,
+  ask_date: (v) => `Which date should I set for ${v.name}'s payment?`,
+  ask_option: () => 'Which one? Please choose.',
+  ask_which_follow: (v) => `${v.name} has several reminders. Which one?`,
+  date_past: (v) => `${v.date} has already passed. Please say a later date.`,
+  no_followup: (v) => `I could not find a reminder for ${v.name}.`,
+  follow_failed: (v) => `The reminder could not be saved: ${v.reason}. Nothing was saved.`,
 }
 
 

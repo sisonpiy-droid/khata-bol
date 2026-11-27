@@ -107,7 +107,7 @@ test('informal shopkeeper phrases', async () => {
   await talk(t, 'haan')
   assert.match((await talk(t, 'Ab total batao.')).say, /Ramesh ke 300 rupaye baaki hain/) // "ab" = this customer
   assert.match((await talk(t, 'Total kitna baaki hai?')).say, /Kul 2350 rupaye baaki hain, 4 customers ke\./) // no "ab": everyone
-  assert.match((await talk(t, 'Aaj kitna udhaar diya?')).say, /Aaj 300 rupaye ka udhaar diya gaya/)
+  assert.match((await talk(t, 'Aaj kitna udhaar diya?')).say, /Aaj aapne 300 rupaye udhaar diye\./)
 })
 
 test('"Kal wale 300 cancel kar do" reverses that specific entry after confirmation', async () => {

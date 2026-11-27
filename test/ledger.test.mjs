@@ -161,8 +161,8 @@ test('spoken reversal needs confirmation and keeps history', async () => {
 test('daily summary by voice, and English works too', async () => {
   const t = fresh()
   await talk(t, 'Suresh ko 2000 rupaye udhaar diye'); await talk(t, 'haan')
-  await talk(t, 'Kavita ne 800 rupaye wapas diye'); await talk(t, 'haan')
-  assert.match((await talk(t, 'Aaj ka hisaab batao.')).say, /Aaj 2000 rupaye ka udhaar diya gaya aur 800 rupaye ki payment receive hui\./)
+  await talk(t, 'Kavita ne 800 rupaye wapas diye'); await talk(t, 'haan'); await talk(t, 'nahi') // declines the offer to complete Kavita's reminder
+  assert.match((await talk(t, 'Aaj ka hisaab batao.')).say, /Aaj aapne 2000 rupaye udhaar diye aur 800 rupaye ki payment receive hui\./)
   const e = await converse(t.db, { session: SESSION, text: 'How much does Suresh owe me?', lang: 'en-IN' })
   assert.match(e.say, /Suresh owes 2450 rupees\./)
 })

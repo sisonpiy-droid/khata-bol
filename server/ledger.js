@@ -2,6 +2,7 @@
 // Every function is scoped to one shop. On the public demo each visitor gets their own demo shop,
 // so visitors can never see or change each other's ledger.
 import { randomUUID } from 'node:crypto'
+import { addDays, istYmd } from './dates.js'
 
 export const MAX_PAISE = 100_000_000 // Rs 10,00,000 per entry
 const MAX_SHOPS = 5000 // public-demo cap; stale demo shops are pruned first
@@ -12,13 +13,20 @@ export class LedgerError extends Error {
   constructor(message, code = 'invalid') { super(message); this.code = code }
 }
 
-function tx(db, fn) {
+export function tx(db, fn) {
   db.exec('BEGIN IMMEDIATE')
   try { const r = fn(); db.exec('COMMIT'); return r }
   catch (e) { db.exec('ROLLBACK'); throw e }
 }
 const audit = (db, txnId, event, detail, shopId = null) =>
   db.prepare('INSERT INTO audit_events (ts, txn_id, event, detail, shop_id) VALUES (?, ?, ?, ?, ?)').run(new Date().toISOString(), txnId, event, JSON.stringify(detail ?? {}), shopId)
+
+// Follow-up rows reference customers and transactions, so they go first when a demo shop is reset or pruned.
+const dropFollowUps = (db, shopId) => {
+  db.prepare('DELETE FROM notification_deliveries WHERE shop_id = ?').run(shopId)
+  db.prepare('DELETE FROM commitment_history WHERE shop_id = ?').run(shopId)
+  db.prepare('DELETE FROM commitments WHERE shop_id = ?').run(shopId)
+}
 
 export const getShop = (db, shopId) => db.prepare('SELECT id, name, is_demo FROM shops WHERE id = ?').get(shopId)
 export const balanceOf = (db, cid) => db.prepare('SELECT COALESCE(SUM(delta_paise), 0) AS b FROM transactions WHERE customer_id = ?').get(cid).b
@@ -47,6 +55,7 @@ export function pruneStale(db, days = STALE_DAYS) {
   tx(db, () => {
     const ids = db.prepare('SELECT id, visitor FROM shops WHERE is_demo = 1 AND visitor IS NOT NULL AND last_seen < ?').all(cutoff)
     for (const s of ids) {
+      dropFollowUps(db, s.id)
       db.prepare('DELETE FROM transactions WHERE shop_id = ?').run(s.id)
       db.prepare('DELETE FROM audit_events WHERE shop_id = ?').run(s.id)
       db.prepare('DELETE FROM customers WHERE shop_id = ?').run(s.id)
@@ -195,13 +204,23 @@ const DEMO = [
 // Synthetic, clearly flagged history for one demo shop.
 export function seedDemo(db, shopId) {
   tx(db, () => {
+    const ids = {}
     DEMO.forEach(([name, rows], i) => {
       const cid = Number(db.prepare('INSERT INTO customers (shop_id, name, created_at) VALUES (?, ?, ?)').run(shopId, name, new Date().toISOString()).lastInsertRowid)
+      ids[name] = cid
       rows.forEach(([ago, type, rupees], j) => {
         const paise = rupees * 100
         db.prepare(`INSERT INTO transactions (id, shop_id, customer_id, type, amount_paise, delta_paise, idempotency_key, ts, synthetic)
           VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)`).run(randomUUID(), shopId, cid, type, paise, type === 'credit' ? paise : -paise, `demo-${shopId}-${i}-${j}`, new Date(Date.now() - ago * DAY).toISOString())
       })
+    })
+    // Synthetic follow-ups: one overdue, one due today, one coming up (relative to today, shop time).
+    const today = istYmd()
+    ;[['Suresh', addDays(today, -3), 'medium', 45000], ['Kavita', today, 'high', 80000], ['Rameshwar', addDays(today, 3), 'low', null]].forEach(([name, due, priority, amount], k) => {
+      const id = randomUUID(), at = new Date().toISOString()
+      db.prepare(`INSERT INTO commitments (id, shop_id, customer_id, due_date, amount_paise, priority, status, idempotency_key, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, 'open', ?, ?, ?)`).run(id, shopId, ids[name], due, amount, priority, `demo-c-${shopId}-${k}`, at, at)
+      db.prepare('INSERT INTO commitment_history (commitment_id, shop_id, ts, event, detail) VALUES (?, ?, ?, ?, ?)').run(id, shopId, at, 'created', '{"synthetic":true}')
     })
   })
 }
@@ -211,6 +230,7 @@ export function resetDemo(db, shopId) {
   const shop = getShop(db, shopId)
   if (!shop?.is_demo) throw new LedgerError('Reset is only available in demo mode', 'forbidden')
   tx(db, () => {
+    dropFollowUps(db, shopId)
     db.prepare('DELETE FROM transactions WHERE shop_id = ?').run(shopId)
     db.prepare('DELETE FROM audit_events WHERE shop_id = ?').run(shopId)
     db.prepare('DELETE FROM customers WHERE shop_id = ?').run(shopId)

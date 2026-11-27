@@ -37,6 +37,33 @@ CREATE TABLE IF NOT EXISTS audit_events (
 CREATE TABLE IF NOT EXISTS conversations (
   id TEXT PRIMARY KEY, ctx TEXT NOT NULL, updated_at TEXT NOT NULL
 );
+-- Payment commitments (promised due dates) double as reminders: a due date plus optional time. They never touch balances.
+-- Only credit/payment/reversal rows in transactions change what a customer owes.
+CREATE TABLE IF NOT EXISTS commitments (
+  id TEXT PRIMARY KEY,
+  shop_id INTEGER NOT NULL REFERENCES shops(id),
+  customer_id INTEGER NOT NULL REFERENCES customers(id),
+  due_date TEXT NOT NULL CHECK (due_date GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]'), -- shop-local (Asia/Kolkata) calendar day
+  due_time TEXT CHECK (due_time IS NULL OR due_time GLOB '[0-2][0-9]:[0-5][0-9]'),
+  amount_paise INTEGER CHECK (amount_paise IS NULL OR (amount_paise > 0 AND amount_paise <= 100000000)), -- only when the shopkeeper said it
+  priority TEXT NOT NULL DEFAULT 'medium' CHECK (priority IN ('high', 'medium', 'low')), -- chosen by the user, never auto-changed
+  note TEXT CHECK (note IS NULL OR length(note) <= 200),
+  status TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'completed', 'cancelled')),
+  txn_id TEXT REFERENCES transactions(id), -- the credit entry this follows up, if any
+  idempotency_key TEXT NOT NULL UNIQUE,
+  created_at TEXT NOT NULL, updated_at TEXT NOT NULL, closed_at TEXT
+);
+CREATE INDEX IF NOT EXISTS commitments_open ON commitments(shop_id, status, due_date);
+CREATE TABLE IF NOT EXISTS commitment_history (
+  id INTEGER PRIMARY KEY AUTOINCREMENT, commitment_id TEXT NOT NULL REFERENCES commitments(id),
+  shop_id INTEGER NOT NULL, ts TEXT NOT NULL, event TEXT NOT NULL, detail TEXT
+);
+-- One row per (commitment, fire time, channel): re-running a scheduler can never deliver the same reminder twice.
+CREATE TABLE IF NOT EXISTS notification_deliveries (
+  id INTEGER PRIMARY KEY AUTOINCREMENT, commitment_id TEXT NOT NULL REFERENCES commitments(id),
+  shop_id INTEGER NOT NULL, fire_key TEXT NOT NULL, channel TEXT NOT NULL DEFAULT 'in_app', delivered_at TEXT NOT NULL,
+  UNIQUE (commitment_id, fire_key, channel)
+);
 CREATE TRIGGER IF NOT EXISTS tx_no_update BEFORE UPDATE ON transactions
 BEGIN SELECT RAISE(ABORT, 'transactions are immutable'); END;
 CREATE TRIGGER IF NOT EXISTS tx_no_delete BEFORE DELETE ON transactions
