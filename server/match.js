@@ -19,15 +19,24 @@ export function score(x, y) {
   return a.startsWith(b) || b.startsWith(a) ? Math.max(s, 0.8) : s
 }
 
-// -> {status:'match',customer} | {status:'new'} | {status:'ambiguous',candidates}
+const STRONG = 0.7 // confident enough to use one customer
+const PLAUSIBLE = 0.55 // similar enough that silently creating a NEW customer would be wrong
+
+// -> {status:'match',customer}
+//  | {status:'ambiguous',candidates}   two or more customers fit (including identical names)
+//  | {status:'maybe',candidates,name}  only a plausible match: the user must pick it or say it is new
+//  | {status:'new'}
 export function matchCustomer(name, customers) {
   const ranked = customers
     .map((c) => ({ c, s: score(name, c.name) }))
-    .filter((x) => x.s >= 0.7)
+    .filter((x) => x.s >= PLAUSIBLE)
     .sort((p, q) => q.s - p.s)
   if (!ranked.length) return { status: 'new' }
-  if (ranked[0].s === 1) return { status: 'match', customer: ranked[0].c }
-  const close = ranked.filter((x) => ranked[0].s - x.s <= 0.15)
+  const exact = ranked.filter((x) => x.s === 1)
+  if (exact.length > 1) return { status: 'ambiguous', candidates: exact.slice(0, 3).map((x) => x.c) } // duplicate names: never pick for the user
+  if (exact.length === 1) return { status: 'match', customer: exact[0].c }
+  if (ranked[0].s < STRONG) return { status: 'maybe', candidates: ranked.slice(0, 2).map((x) => x.c), name }
+  const close = ranked.filter((x) => x.s >= STRONG && ranked[0].s - x.s <= 0.15)
   return close.length > 1
     ? { status: 'ambiguous', candidates: close.slice(0, 3).map((x) => x.c) }
     : { status: 'match', customer: ranked[0].c }

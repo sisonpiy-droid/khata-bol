@@ -31,7 +31,8 @@ CREATE TABLE IF NOT EXISTS transactions (
 CREATE UNIQUE INDEX IF NOT EXISTS one_reversal_per_entry ON transactions(reversed_of) WHERE reversed_of IS NOT NULL;
 CREATE INDEX IF NOT EXISTS tx_customer ON transactions(customer_id, ts);
 CREATE TABLE IF NOT EXISTS audit_events (
-  id INTEGER PRIMARY KEY AUTOINCREMENT, ts TEXT NOT NULL, txn_id TEXT, event TEXT NOT NULL, detail TEXT
+  id INTEGER PRIMARY KEY AUTOINCREMENT, ts TEXT NOT NULL, txn_id TEXT, event TEXT NOT NULL, detail TEXT,
+  shop_id INTEGER -- audit rows (and the transcript they hold) are removed together with their demo shop
 );
 CREATE TABLE IF NOT EXISTS conversations (
   id TEXT PRIMARY KEY, ctx TEXT NOT NULL, updated_at TEXT NOT NULL
@@ -60,6 +61,7 @@ export function openDb(path = dbPath()) {
   // Databases created before per-visitor demos lack these columns.
   const cols = db.prepare('PRAGMA table_info(shops)').all().map((c) => c.name)
   if (!cols.includes('visitor')) db.exec('ALTER TABLE shops ADD COLUMN visitor TEXT; ALTER TABLE shops ADD COLUMN last_seen TEXT;')
+  if (!db.prepare('PRAGMA table_info(audit_events)').all().some((c) => c.name === 'shop_id')) db.exec('ALTER TABLE audit_events ADD COLUMN shop_id INTEGER;')
   db.exec('CREATE UNIQUE INDEX IF NOT EXISTS shop_visitor ON shops(visitor) WHERE visitor IS NOT NULL')
   return db
 }

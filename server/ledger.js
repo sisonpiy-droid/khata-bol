@@ -17,8 +17,8 @@ function tx(db, fn) {
   try { const r = fn(); db.exec('COMMIT'); return r }
   catch (e) { db.exec('ROLLBACK'); throw e }
 }
-const audit = (db, txnId, event, detail) =>
-  db.prepare('INSERT INTO audit_events (ts, txn_id, event, detail) VALUES (?, ?, ?, ?)').run(new Date().toISOString(), txnId, event, JSON.stringify(detail ?? {}))
+const audit = (db, txnId, event, detail, shopId = null) =>
+  db.prepare('INSERT INTO audit_events (ts, txn_id, event, detail, shop_id) VALUES (?, ?, ?, ?, ?)').run(new Date().toISOString(), txnId, event, JSON.stringify(detail ?? {}), shopId)
 
 export const getShop = (db, shopId) => db.prepare('SELECT id, name, is_demo FROM shops WHERE id = ?').get(shopId)
 export const balanceOf = (db, cid) => db.prepare('SELECT COALESCE(SUM(delta_paise), 0) AS b FROM transactions WHERE customer_id = ?').get(cid).b
@@ -48,6 +48,7 @@ export function pruneStale(db, days = STALE_DAYS) {
     const ids = db.prepare('SELECT id, visitor FROM shops WHERE is_demo = 1 AND visitor IS NOT NULL AND last_seen < ?').all(cutoff)
     for (const s of ids) {
       db.prepare('DELETE FROM transactions WHERE shop_id = ?').run(s.id)
+      db.prepare('DELETE FROM audit_events WHERE shop_id = ?').run(s.id)
       db.prepare('DELETE FROM customers WHERE shop_id = ?').run(s.id)
       db.prepare('DELETE FROM conversations WHERE id = ?').run(s.visitor)
       db.prepare('DELETE FROM shops WHERE id = ?').run(s.id)
@@ -83,10 +84,39 @@ export function addCustomer(db, shopId, name) {
   return { id: Number(id), name: n }
 }
 
+// Adds a customer once. An existing customer with the same name is returned instead of a duplicate
+// (identical names the user wants separately are created through commitEntry's newName path after explicit choice).
+export function createCustomer(db, { shopId, name, key }) {
+  if (!key) throw new LedgerError('Missing idempotency key')
+  return tx(db, () => {
+    const done = db.prepare("SELECT detail FROM audit_events WHERE event = 'customer_created' AND txn_id = ?").get(key)
+    if (done) { const c = db.prepare('SELECT id, name FROM customers WHERE id = ? AND shop_id = ?').get(JSON.parse(done.detail).customerId, shopId); if (c) return { duplicate: true, customer: c } }
+    const n = String(name ?? '').trim().replace(/\s+/g, ' ')
+    const same = db.prepare('SELECT id, name FROM customers WHERE shop_id = ? AND lower(name) = lower(?)').get(shopId, n)
+    if (same) return { duplicate: true, customer: same }
+    const customer = addCustomer(db, shopId, n)
+    audit(db, key, 'customer_created', { customerId: customer.id }, shopId)
+    return { duplicate: false, customer }
+  })
+}
+
+// Entries a user may mean by "kal wale 300": same amount, optional IST day (0 today, -1 yesterday) and customer, newest first.
+export function findReversible(db, shopId, { amountPaise, dayOffset = null, customerId = null }) {
+  let from = '0000', to = '9999'
+  if (dayOffset !== null) {
+    const ymd = new Date(Date.now() + dayOffset * DAY).toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' })
+    from = new Date(`${ymd}T00:00:00+05:30`).toISOString(); to = new Date(new Date(from).getTime() + DAY).toISOString()
+  }
+  return db.prepare(`SELECT t.*, c.name AS customer_name FROM transactions t JOIN customers c ON c.id = t.customer_id
+    WHERE t.shop_id = ?1 AND t.type != 'reversal' AND t.amount_paise = ?2 AND t.ts >= ?3 AND t.ts < ?4 AND (?5 IS NULL OR t.customer_id = ?5)
+      AND NOT EXISTS (SELECT 1 FROM transactions r WHERE r.reversed_of = t.id)
+    ORDER BY t.ts DESC, t.rowid DESC LIMIT 5`).all(shopId, amountPaise, from, to, customerId)
+}
+
 const byKey = (db, key) => db.prepare('SELECT * FROM transactions WHERE idempotency_key = ?').get(key)
 
 // The only way credit/payment is written. The same idempotency key never creates a second row.
-export function commitEntry(db, { shopId, customerId = null, newName = null, type, amountPaise, key, synthetic = 0, ts = null }) {
+export function commitEntry(db, { shopId, customerId = null, newName = null, type, amountPaise, key, synthetic = 0, ts = null, said = null }) {
   if (!['credit', 'payment'].includes(type)) throw new LedgerError('Type must be credit or payment')
   if (!Number.isInteger(amountPaise) || amountPaise < 1 || amountPaise > MAX_PAISE) throw new LedgerError('Amount must be between Rs 0.01 and Rs 10,00,000')
   if (!key) throw new LedgerError('Missing idempotency key')
@@ -94,7 +124,7 @@ export function commitEntry(db, { shopId, customerId = null, newName = null, typ
     const existing = byKey(db, key)
     if (existing) {
       if (existing.shop_id !== shopId || existing.type !== type || existing.amount_paise !== amountPaise) throw new LedgerError('Idempotency key reused with different data', 'conflict')
-      audit(db, existing.id, 'duplicate_blocked', { key })
+      audit(db, existing.id, 'duplicate_blocked', { key }, shopId)
       return { duplicate: true, txn: existing, balance_paise: balanceOf(db, existing.customer_id) }
     }
     let customer
@@ -105,7 +135,7 @@ export function commitEntry(db, { shopId, customerId = null, newName = null, typ
     const id = randomUUID()
     db.prepare(`INSERT INTO transactions (id, shop_id, customer_id, type, amount_paise, delta_paise, idempotency_key, ts, synthetic)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(id, shopId, customer.id, type, amountPaise, type === 'credit' ? amountPaise : -amountPaise, key, ts ?? new Date().toISOString(), synthetic)
-    audit(db, id, 'created', { type, amountPaise, customerId: customer.id })
+    audit(db, id, 'created', { type, amountPaise, customerId: customer.id, said: said ? String(said).slice(0, 500) : undefined }, shopId)
     return { duplicate: false, txn: byKey(db, key), customer, balance_paise: balanceOf(db, customer.id) }
   })
 }
@@ -117,7 +147,7 @@ export function reverseTxn(db, { shopId, txnId, key }) {
     const existing = byKey(db, key)
     if (existing) {
       if (existing.shop_id !== shopId) throw new LedgerError('Idempotency key reused with different data', 'conflict')
-      audit(db, existing.id, 'duplicate_blocked', { key })
+      audit(db, existing.id, 'duplicate_blocked', { key }, shopId)
       return { duplicate: true, txn: existing, balance_paise: balanceOf(db, existing.customer_id) }
     }
     const orig = db.prepare('SELECT * FROM transactions WHERE id = ? AND shop_id = ?').get(txnId, shopId)
@@ -127,7 +157,7 @@ export function reverseTxn(db, { shopId, txnId, key }) {
     const id = randomUUID()
     db.prepare(`INSERT INTO transactions (id, shop_id, customer_id, type, amount_paise, delta_paise, reversed_of, idempotency_key, ts)
       VALUES (?, ?, ?, 'reversal', ?, ?, ?, ?, ?)`).run(id, orig.shop_id, orig.customer_id, orig.amount_paise, -orig.delta_paise, orig.id, key, new Date().toISOString())
-    audit(db, id, 'reversed', { original: orig.id })
+    audit(db, id, 'reversed', { original: orig.id }, shopId)
     return { duplicate: false, txn: byKey(db, key), original: orig, balance_paise: balanceOf(db, orig.customer_id) }
   })
 }
@@ -182,9 +212,10 @@ export function resetDemo(db, shopId) {
   if (!shop?.is_demo) throw new LedgerError('Reset is only available in demo mode', 'forbidden')
   tx(db, () => {
     db.prepare('DELETE FROM transactions WHERE shop_id = ?').run(shopId)
+    db.prepare('DELETE FROM audit_events WHERE shop_id = ?').run(shopId)
     db.prepare('DELETE FROM customers WHERE shop_id = ?').run(shopId)
     db.prepare('DELETE FROM conversations WHERE id = (SELECT visitor FROM shops WHERE id = ?)').run(shopId)
-    audit(db, null, 'demo_reset', { shopId })
+    audit(db, null, 'demo_reset', { shopId }, shopId)
   })
   seedDemo(db, shopId)
 }

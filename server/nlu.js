@@ -59,11 +59,11 @@ export function translit(word) {
   return out
 }
 
-const ONES = { ek: 1, one: 1, do: 2, two: 2, teen: 3, three: 3, char: 4, chaar: 4, four: 4, paanch: 5, panch: 5, paach: 5, five: 5, chhe: 6, che: 6, chhah: 6, six: 6, saat: 7, seven: 7, aath: 8, eight: 8, nau: 9, nine: 9, das: 10, ten: 10, gyarah: 11, eleven: 11, barah: 12, twelve: 12, terah: 13, thirteen: 13, chaudah: 14, fourteen: 14, pandrah: 15, fifteen: 15, solah: 16, sixteen: 16, satrah: 17, seventeen: 17, atharah: 18, athaarah: 18, eighteen: 18, unnis: 19, nineteen: 19, bees: 20, twenty: 20, pachees: 25, tees: 30, thirty: 30, chalis: 40, chaalis: 40, forty: 40, pachaas: 50, pachas: 50, fifty: 50, saath: 60, sixty: 60, sattar: 70, seventy: 70, assi: 80, eighty: 80, nabbe: 90, ninety: 90 }
+const ONES = { ek: 1, one: 1, do: 2, two: 2, teen: 3, three: 3, char: 4, chaar: 4, four: 4, paanch: 5, panch: 5, paach: 5, five: 5, chhe: 6, che: 6, chhah: 6, six: 6, saat: 7, seven: 7, aath: 8, eight: 8, nau: 9, nine: 9, das: 10, ten: 10, gyarah: 11, eleven: 11, barah: 12, twelve: 12, terah: 13, thirteen: 13, chaudah: 14, fourteen: 14, pandrah: 15, fifteen: 15, solah: 16, sixteen: 16, satrah: 17, seventeen: 17, atharah: 18, athaarah: 18, eighteen: 18, unnis: 19, nineteen: 19, bees: 20, twenty: 20, pachees: 25, tees: 30, thirty: 30, chalis: 40, chaalis: 40, forty: 40, pachaas: 50, pachas: 50, fifty: 50, saath: 60, sixty: 60, sattar: 70, seventy: 70, assi: 80, eighty: 80, nabbe: 90, ninety: 90, tin: 3, sat: 7, dus: 10, bis: 20, aat: 8, nao: 9, chhah: 6 }
 const MULT = { sau: 100, sao: 100, hundred: 100, hazaar: 1000, hazar: 1000, hajar: 1000, thousand: 1000, lakh: 100000, lac: 100000 }
 const FRAC = { dhai: 2.5, derh: 1.5, dedh: 1.5, sawa: 1.25 }
 const RUPEE = new Set(['rupaye', 'rupees', 'rupee', 'rupay', 'rupiya', 'rs', 'inr', 'rupye', 'rupaiye'])
-const isNumTok = (t) => t in ONES || t in MULT || t in FRAC || t === 'saade' || t === 'sade'
+const isNumTok = (t) => t in ONES || t in MULT || t in FRAC || t === 'saade' || t === 'sade' || t === 'paune'
 
 function numWord(t) { // exact, else one typo away for longer words ("pachas" vs "pachaas")
   if (isNumTok(t)) return t
@@ -71,37 +71,43 @@ function numWord(t) { // exact, else one typo away for longer words ("pachas" vs
   return [...Object.keys(ONES), ...Object.keys(MULT), ...Object.keys(FRAC)].find((k) => k.length >= 5 && lev(t, k) <= 1) ?? null
 }
 
-// Rupees found in the tokens, or null. A lone small word ("do") only counts next to a rupee word.
-export function parseAmount(tokens) {
+// Every amount in the tokens, in order, in rupees. A lone small word ("do") only counts next to a rupee word.
+// "saade teen sau" = 350, "paune do sau" = 175, "dhai hazaar" = 2500.
+export function parseAmounts(tokens) {
   const toks = tokens.map((t) => (/^\d+(\.\d+)?$/.test(t) ? t : numWord(t) ?? t))
+  const out = []
   for (let i = 0; i < toks.length; i++) {
     if (/^\d+(\.\d+)?$/.test(toks[i])) {
-      const v = Number(toks[i])
-      if (toks[i + 1] in MULT) { return v * MULT[toks[i + 1]] }
-      return v
+      let v = Number(toks[i])
+      if (toks[i + 1] in MULT) { v *= MULT[toks[i + 1]]; i++ }
+      out.push(v)
+      continue
     }
     if (!isNumTok(toks[i])) continue
-    let total = 0, cur = 0, half = false, mults = 0, j = i
+    let total = 0, cur = 0, adj = 0, mults = 0, j = i
     for (; j < toks.length && isNumTok(toks[j]); j++) {
       const t = toks[j]
-      if (t === 'saade' || t === 'sade') half = true
-      else if (t in ONES) { cur += ONES[t] + (half ? 0.5 : 0); half = false }
+      if (t === 'saade' || t === 'sade') adj = 0.5
+      else if (t === 'paune') adj = -0.25
+      else if (t in ONES) { cur += ONES[t] + adj; adj = 0 }
       else if (t in FRAC) cur = FRAC[t]
       else if (t === 'sau' || t === 'sao' || t === 'hundred') { cur = (cur || 1) * 100; mults++ }
       else { total += (cur || 1) * MULT[t]; cur = 0; mults++ }
     }
     const value = total + cur
-    if (value > 0 && (mults > 0 || value > 20 || RUPEE.has(toks[j]))) return value
+    if (value > 0 && (mults > 0 || value > 20 || RUPEE.has(toks[j]))) out.push(value)
     i = j - 1
   }
-  return null
+  return out
 }
+export const parseAmount = (tokens) => parseAmounts(tokens)[0] ?? null
 
 const STOP = new Set(('ko ne ka ke ki se hai hain ho hu tha thi the to from for of me my mujhe mera aap ab abhi phir aur or and the a an add credit payment record check balance batao bata bataiye karo kar do karun kiya kiye kare diye diya di de liya liye ' +
   'wapas return returned paid udhaar udhar kitna kitni kitne baaki baki owe owes owed how much does total rupaye rupees rupee rs inr rupay hisaab aaj today customer naya new pichhli pichli pichla pichhla last entry galat sahi haan han ha haa yes no nahi nahin na ok okay theek ' +
   'please jama chuka lauta received receive mein main hi bhi wala wali previous undo cancel rehne rahne dues due outstanding yeh ye woh wo usne unhone vo account dukan khata khate sab sabka sabhi everyone anyone customer ji bhai bhaiya sahab madam aunty uncle ' +
   'aapka hamara kitnaa hisab abhi bilkul confirm correct right wrong nope yeah yep stop ruko mat chhodo chod isse reverse entries transaction ' +
-  'diya hua hui hue gaya gayi raha rahi lena dena liya dedo dedijiye karna').split(/\s+/))
+  'diya hua hui hue gaya gayi raha rahi lena dena liya dedo dedijiye karna ' +
+  'kal parso yesterday wale wala samaan saman saaman maal saudha goods items jodo banao bana hatao delete remove pichle pichhle overall').split(/\s+/))
 
 const YES = new Set('haan han ha haa yes yeah yep ok okay sahi theek thik correct right confirm bilkul ji kardo done sure save'.split(' '))
 const NO = new Set('nahi nahin na no nope galat ruko wrong cancel'.split(' '))
@@ -126,10 +132,13 @@ const PARTICLE_BEFORE = new Set(['to', 'from', 'for'])
 // Which customer is meant? -> {status:'match'|'ambiguous'|'new', customer?, candidates?, name?} or null
 export function findCustomer(tokens, customers) {
   const cand = tokens.map((t, i) => ({ t, i })).filter(({ t }) => t.length >= 3 && /^\p{L}+$/u.test(t) && !STOP.has(t) && !isNumTok(t) && !RUPEE.has(t))
-  for (const { t } of cand) {
+  let maybe = null
+  for (const { t } of cand) { // a confident match anywhere beats a plausible one
     const m = matchCustomer(t, customers)
-    if (m.status !== 'new') return m
+    if (m.status === 'match' || m.status === 'ambiguous') return m
+    if (m.status === 'maybe' && !maybe) maybe = { ...m, name: title(t) }
   }
+  if (maybe) return maybe
   for (const { t, i } of cand) {
     if (PARTICLE_AFTER.has(tokens[i + 1]) || PARTICLE_BEFORE.has(tokens[i - 1])) return { status: 'new', name: title(t) }
   }
@@ -139,23 +148,39 @@ export function findCustomer(tokens, customers) {
 export function parse(text, customers) {
   const tokens = normalize(text)
   const j = tokens.join(' ')
-  const amount = parseAmount(tokens)
+  const amounts = parseAmounts(tokens)
   const has = (re) => re.test(j)
+  const short = tokens.length <= 6
+  const isNo = short && tokens.some((t) => NO.has(t))
+  // "Nahi, paanch sau nahi, teen sau": when the user is correcting, the LAST amount is the one they mean.
+  const amount = isNo && amounts.length > 1 ? amounts[amounts.length - 1] : amounts[0]
+  const strongPay = has(/\b(wa+pas|va+pas|waapis|return\w*|repa\w*|paid|payment|jama|chuka\w*|lauta\w*|receiv\w*)\b/)
+  // "Ramesh ne 200 diye" gives no direction (payment? goods?). It is flagged weak so the app asks instead of guessing.
+  const weakPay = !strongPay && has(/\bne\b.*\b(diy[ea]|diya|di|de)\b/) && !has(/\bko\b/) && !has(/\b(udh?a+r|credit|liya|liye|samaan|saman|saaman|maal|saudha|goods)\b/)
   const f = {
-    text: j, tokens, amountPaise: amount != null ? Math.round(amount * 100) : null,
+    text: j, tokens, amountPaise: amount != null ? Math.round(amount * 100) : null, // integer paise from here on
     nameRef: findCustomer(tokens, customers),
     isSummary: has(/\b(aaj|today|todays|aj)\b.*\b(hisaab|hisab|summary|account|total|report|kitna|sale)\b|\bhisaab\b.*\b(aaj|today)\b/),
     isReverse: has(/\b(pichh?li|pichla|pichhla|previous|purani)\b.*\b(entry|transaction|wali|wala)\b|\bundo\b|\b(entry|transaction)\b.*\bgalat\b|\blast\b.*\b(wala|wali|entry|hatao|delete|remove|reverse)\b/),
     isCancel: has(/\b(cancel|rehne do|rahne do|chhodo|chod do|mat karo|stop)\b/),
-    hasPayment: has(/\b(wa+pas|va+pas|waapis|return\w*|repa\w*|paid|payment|jama|chuka\w*|lauta\w*|receiv\w*)\b/) || has(/\bne\b.*\b(diy[ea]|diya|di|de)\b/) && !has(/\bko\b/) && !has(/\b(udh?a+r|credit|liya|liye)\b/),
-    hasCredit: has(/\b(udh?a+r|adhar|credit|lend|lent|borrow\w*|liya|liye|le gay[ea]|likh do)\b/) || has(/\bko\b.*\b(diy[ea]|diya|di|de)\b/),
+    hasPayment: strongPay || weakPay,
+    weakPayment: weakPay,
+    hasCredit: has(/\b(udh?a+r|adhar|credit|lend|lent|borrow\w*|liya|liye|le gay[ea]|likh do|samaan|saman|saaman|maal|saudha|goods)\b/) || has(/\bko\b.*\b(diy[ea]|diya|di|de)\b/),
+    wantsTotal: has(/\b(total|kul|sabka|sabhi|sab|everyone|overall)\b/),
+    contextual: has(/\b(ab|abhi)\b/),
   }
-  f.isBalance = !f.isSummary && f.amountPaise == null && has(/\b(kitna|kitni|kitne|how much|balance|owe\w*|dues?|outstanding|baaki|baki)\b/)
-  const short = tokens.length <= 6
-  f.isNo = short && tokens.some((t) => NO.has(t))
+  f.isBalance = !f.isSummary && f.amountPaise == null && has(/\b(kitna|kitni|kitne|how much|balance|owe\w*|dues?|outstanding|baaki|baki|total|kul)\b/)
+  f.isNo = isNo
   f.isYes = short && !f.isNo && !f.isBalance && !f.isSummary && !f.isReverse && f.amountPaise == null && tokens.some((t) => YES.has(t)) && !f.hasCredit && !f.hasPayment
-  if (f.isBalance) { f.hasCredit = false; f.hasPayment = false }
-  if (f.hasPayment && f.hasCredit && has(/\b(wa+pas|va+pas|return\w*|repa\w*|paid|jama|chuka\w*)\b/)) f.hasCredit = false // "udhaar wapas diya" = repayment
+  if (f.isBalance) { f.hasCredit = false; f.hasPayment = false; f.weakPayment = false }
+  if (f.hasPayment && f.hasCredit && strongPay) f.hasCredit = false // "udhaar wapas diya" = repayment
+  // "Kal wale 300 cancel kar do": reverse one specific entry by amount (and day / customer), not the last one.
+  const reverseWord = has(/\b(cancel|hatao|delete|remove|reverse|undo|galat)\b/)
+  const when = has(/\b(kal|yesterday)\b/) ? -1 : has(/\b(aaj|today)\b/) ? 0 : null
+  f.specificReverse = amounts.length > 0 && reverseWord && (when !== null || has(/\b(wala|wale|wali)\b/)) && !f.hasCredit && !f.hasPayment && !f.isBalance && !f.isSummary
+  if (f.specificReverse) { f.isReverse = true; f.reverseWhen = when; f.reverseAmountPaise = f.amountPaise }
+  // "Rameshwar ko add karo": add a customer, not an entry.
+  f.isAddCustomer = !!f.nameRef && f.amountPaise == null && has(/\b(add|jodo|jod do|naya|new|banao|bana do)\b/) && !f.hasCredit && !f.hasPayment && !f.isBalance && !f.isSummary
   f.recognised = f.isSummary || f.isReverse || f.isCancel || f.hasPayment || f.hasCredit || f.isBalance || f.isNo || f.isYes || f.amountPaise != null || !!f.nameRef
   return f
 }

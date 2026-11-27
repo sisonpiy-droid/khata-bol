@@ -29,6 +29,14 @@ const hi = {
   ai_needed: () => 'Is bhasha ko samajhne ke liye AI enhancement chahiye, jo abhi configure nahi hai. Hindi ya English mein boliye.',
   ask_customer_for_balance: () => 'Kis customer ka balance chahiye?',
   large_amount: () => ' Yeh bada amount hai, ek baar dhyan se check kar lijiye.',
+  clarify_type: (v) => `${v.name} ke ${rs(v.amount)} rupaye: payment mili ya udhaar diya?`,
+  overpay: (v) => (v.owed > 0 ? `Dhyan dein: ${v.name} ke sirf ${rs(v.owed)} rupaye baaki hain, baaki ${rs(v.extra)} rupaye advance ban jayenge. ` : `Dhyan dein: ${v.name} ka koi balance baaki nahi hai, yeh poora ${rs(v.extra)} rupaye advance ban jayega. `),
+  stale: () => 'Yeh jawab purani entry ka tha, isliye kuch save nahi hua.',
+  customer_exists: (v) => `${v.name} pehle se aapke khate mein hain.`,
+  ask_new_customer: (v) => `Naya customer ${v.name} jodun?`,
+  customer_added: (v) => `${v.name} ka khata ban gaya.`,
+  reverse_notfound: (v) => `${v.when ? `${v.when} ka ` : ''}${rs(v.amount)} rupaye ka koi entry nahi mila.`,
+  reverse_more: (v) => ` Aisi ${v.n} aur entries hain; yeh sabse nayi hai.`,
   expired: () => 'Woh entry kaafi der pehle ki thi, isliye cancel ho gayi. Dobara boliye.',
 }
 
@@ -58,6 +66,14 @@ const en = {
   ai_needed: () => 'Understanding this language needs AI enhancement, which is not configured. Please speak Hindi or English.',
   ask_customer_for_balance: () => "Which customer's balance?",
   large_amount: () => ' This is a large amount, please double-check it.',
+  clarify_type: (v) => `${v.name}, ${rs(v.amount)} rupees: did you receive a payment, or give credit?`,
+  overpay: (v) => (v.owed > 0 ? `Note: ${v.name} only owes ${rs(v.owed)} rupees, so ${rs(v.extra)} rupees will become an advance. ` : `Note: ${v.name} owes nothing, so the whole ${rs(v.extra)} rupees will become an advance. `),
+  stale: () => 'That answer was for an older entry, so nothing was saved.',
+  customer_exists: (v) => `${v.name} is already in your accounts.`,
+  ask_new_customer: (v) => `Add ${v.name} as a new customer?`,
+  customer_added: (v) => `${v.name} has been added.`,
+  reverse_notfound: (v) => `I could not find a ${v.when ? `${v.when} ` : ''}${rs(v.amount)} rupee entry.`,
+  reverse_more: (v) => ` There are ${v.n} more like it; this is the newest.`,
   expired: () => 'That entry was too old, so it was cancelled. Please say it again.',
 }
 
