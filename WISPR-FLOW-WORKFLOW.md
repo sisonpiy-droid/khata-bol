@@ -42,6 +42,19 @@ An AI assistant cannot operate Wispr Flow, so I cannot document your usage for y
 - Limitations I hit (accuracy on Hinglish/names, dictating into the terminal, punctuation, latency, privacy): _______________
 - Rough time comparison, only if you measured it: _______________
 
+## 2b. A ten-minute dictation session that produces real evidence
+
+These are genuine, useful tasks for this project. Dictate each one with Wispr Flow into your coding assistant, let it do the work, and keep the screen recording. The prompts below are suggestions to read aloud in your own words; the evidence is what you actually say and what Wispr Flow actually produces.
+
+1. **Feature request (Hinglish names on purpose):** "On the Customers screen, add an Export button that downloads all customers and their balances as a CSV file. Ramesh and Rameshwar should both appear."
+2. **Bug report / test scenario:** "Add a test for this case: the shopkeeper says Ramesh ne 200 diye, so the direction is unclear. The app must ask whether it was a payment or credit, and it must save nothing until the shopkeeper chooses."
+3. **Documentation:** "Add a short section to the README explaining what happens when a hosted demo shop is cleared after a server restart."
+4. **Iteration instruction:** "Make the Reminders screen simpler for an older shopkeeper on an Android phone: bigger buttons and fewer labels."
+
+After each one, note in section 2 above: the exact text Wispr Flow produced, anything it got wrong (names such as Ramesh, Rameshwar, Kavita; Hinglish words), and the time it took compared with typing, only if you measured it.
+
+For the product side, also dictate this into the **Dictate with Wispr Flow (optional)** field on the home screen and record the confirmation card appearing: "Ramesh ko paanch sau rupaye udhaar diye".
+
 ## 3. Evidence checklist for the submission
 
 Do these yourself and keep the files; do not describe evidence you do not have.
