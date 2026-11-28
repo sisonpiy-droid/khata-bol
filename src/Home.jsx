@@ -78,8 +78,7 @@ export default function Home({ data, loading, cfg, v, hint, typed, setTyped, lan
         {loading ? <Card className="animate-pulse"><div className="h-24 rounded-2xl bg-line/50" /><p className="text-muted mt-3">Loading your khata…</p></Card> : <>
         <Collections data={data} actions={actions} />
         <div className="grid grid-cols-2 gap-3">
-          <Stat big label="Total outstanding" value={inr(data.stats.outstanding_paise)} />
-          <Stat label="Customers with dues" value={data.stats.owing_count} />
+          <Stat big label="Total outstanding" value={inr(data.stats.outstanding_paise)} sub={data.stats.owing_count ? `${data.stats.owing_count} customer${data.stats.owing_count > 1 ? 's' : ''} owe you` : 'Nobody owes you anything'} />
           <Stat label="Credit given today" value={inr(data.today.credit_paise)} tone="text-brick" />
           <Stat label="Payments today" value={inr(data.today.payment_paise)} tone="text-forest" />
         </div>
@@ -97,10 +96,11 @@ export default function Home({ data, loading, cfg, v, hint, typed, setTyped, lan
   )
 }
 
-const Stat = ({ label, value, big, tone = '' }) => (
+const Stat = ({ label, value, big, tone = '', sub }) => (
   <div className={`${big ? 'col-span-2 bg-forest text-white' : 'bg-card border border-line'} rounded-2xl p-4`}>
     <p className={`text-[11px] font-bold uppercase tracking-wide ${big ? 'text-white/70' : 'text-muted'}`}>{label}</p>
     <p className={`font-display ${big ? 'text-4xl' : 'text-2xl'} font-extrabold leading-tight mt-0.5 ${tone}`}>{value}</p>
+    {sub && <p className={`text-sm font-semibold mt-1 ${big ? 'text-white/80' : 'text-muted'}`}>{sub}</p>}
   </div>
 )
 

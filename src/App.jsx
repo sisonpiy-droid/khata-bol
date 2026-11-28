@@ -26,6 +26,7 @@ export default function App() {
   const [lang, setLangState] = useState(savedLang)
   const [tab, setTab] = useState('home')
   const [newAcct, setNewAcct] = useState(false)
+  const [welcome, setWelcome] = useState(false)
   const [v, setV] = useState({ mode: 'idle', dlg: 'idle', heard: null, interim: '', reply: null, err: null, canRetry: false, pid: null, source: 'voice' })
   const [typed, setTyped] = useState('')
   const [online, setOnline] = useState(navigator.onLine)
@@ -159,14 +160,24 @@ export default function App() {
             <span className="w-10 h-10 rounded-xl grid place-items-center bg-forest text-white"><Icon n="book" className="w-5 h-5" /></span>
             <span className="leading-none"><span className="block font-display text-2xl font-extrabold">Khata Bol</span><span className="text-[11px] font-bold tracking-widest text-muted uppercase">खाता बोल</span></span>
           </button>
-          {cfg.demo && <button onClick={() => setNewAcct(true)} className="inline-flex items-center gap-1.5 min-h-11 px-4 rounded-full bg-forest text-white text-sm font-bold hover:bg-forest-deep"><Icon n="users" className="w-4 h-4" /> New account</button>}
           <nav className="hidden sm:flex gap-1 bg-card border border-line rounded-full p-1" aria-label="Sections">
             {NAV.map(([id, l, ic]) => tabBtn(id, l, ic, 'inline-flex items-center gap-2 rounded-full px-4 min-h-11 text-sm font-bold', ['bg-forest text-white', 'text-forest hover:bg-mint']))}
           </nav>
+          {cfg.demo && <button onClick={() => setNewAcct(true)} className="inline-flex items-center gap-1.5 min-h-11 px-4 rounded-full border-2 border-forest text-forest text-sm font-bold hover:bg-mint"><Icon n="users" className="w-4 h-4" /> New account</button>}
         </div>
       </header>
 
-      {newAcct && <NewAccount onClose={() => setNewAcct(false)} onDone={() => { setNewAcct(false); voice.clear(); setDueNow([]); setTab('home'); api.config().then(setCfg).catch(() => {}); refresh() }} />}
+      {newAcct && <NewAccount onClose={() => setNewAcct(false)} onDone={() => { setNewAcct(false); store.set('khata.tips', ''); setShowTips(true); setWelcome(true); voice.clear(); setDueNow([]); setTab('home'); api.config().then(setCfg).catch(() => {}); refresh() }} />}
+
+      {welcome && (
+        <div role="status" className="bg-mint border-b border-line no-print">
+          <div className="max-w-6xl mx-auto flex items-center gap-3 px-4 py-3">
+            <Icon n="check" className="w-5 h-5 text-forest shrink-0" />
+            <p className="flex-1 font-semibold text-forest">Your shop is ready and empty. Tap the mic and add your first customer.</p>
+            <button onClick={() => setWelcome(false)} aria-label="Dismiss" className="min-w-11 min-h-11 grid place-items-center text-muted"><Icon n="x" /></button>
+          </div>
+        </div>
+      )}
 
       {!online && (
         <div role="alert" className="bg-ink text-paper text-sm font-semibold py-2 px-4 text-center no-print">
