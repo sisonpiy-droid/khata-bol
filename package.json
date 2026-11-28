@@ -6,7 +6,8 @@
     "dev": "concurrently -k -n api,web \"node server/index.js\" \"vite\"",
     "test": "node --test test/*.test.mjs",
     "build": "vite build",
-    "start": "node server/index.js"
+    "start": "node server/index.js",
+    "smoke": "node scripts/smoke.mjs"
   },
   "dependencies": {
     "dotenv": "^18.0.9",

@@ -2,7 +2,7 @@
 
 ![Node](https://img.shields.io/badge/node-24-339933) ![Tests](https://img.shields.io/badge/tests-105%20passing-1f6b3a) ![Docker](https://img.shields.io/badge/docker-compose-2496ED)
 
-**Live:** https://khata-bol-umber.vercel.app · **Docs:** [Architecture](docs/ARCHITECTURE.md) · [API](docs/API.md) · [Security](SECURITY.md) · [Contributing](CONTRIBUTING.md)
+**Live:** https://khata-bol-umber.vercel.app · **Judges:** [Submission pack](SUBMISSION.md) · **Docs:** [Architecture](docs/ARCHITECTURE.md) · [API](docs/API.md) · [Security](SECURITY.md) · [Contributing](CONTRIBUTING.md)
 
 **Your shop's accounts, just a conversation away.**
 A voice-first udhaar (credit) ledger and payment follow-up assistant for India's kirana shopkeepers. Speak the entry, hear it read back, say "haan", and it is saved. Then ask for the day's accounts, set a payment promise, and get reminded. Category: Livelihoods and Small Business.

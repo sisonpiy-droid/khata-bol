@@ -27,6 +27,7 @@ export default function App() {
   const [tab, setTab] = useState('home')
   const [newAcct, setNewAcct] = useState(false)
   const [welcome, setWelcome] = useState(false)
+  const [lost, setLost] = useState(false) // this browser made an account, but the server no longer has it
   const [v, setV] = useState({ mode: 'idle', dlg: 'idle', heard: null, interim: '', reply: null, err: null, canRetry: false, pid: null, source: 'voice' })
   const [typed, setTyped] = useState('')
   const [online, setOnline] = useState(navigator.onLine)
@@ -86,7 +87,7 @@ export default function App() {
 
   useEffect(() => {
     refresh(); checkDue()
-    api.config().then((c) => { setCfg(c); sttRef.current = c.stt }).catch(() => {})
+    api.config().then((c) => { setCfg(c); sttRef.current = c.stt; if (c.demo && store.get('khata.account')) setLost(true) }).catch(() => {})
     hasVoice('kn-IN').then((ok) => { knVoiceRef.current = ok; setKnVoice(ok) })
     Promise.all([hasVoice('hi-IN'), hasVoice('en-IN')]).then(([a, b]) => setVoiceOk(a || b))
     voice.resume() // an unfinished entry survives a page refresh
@@ -167,7 +168,18 @@ export default function App() {
         </div>
       </header>
 
-      {newAcct && <NewAccount onClose={() => setNewAcct(false)} onDone={() => { setNewAcct(false); store.set('khata.tips', ''); setShowTips(true); setWelcome(true); voice.clear(); setDueNow([]); setTab('home'); api.config().then(setCfg).catch(() => {}); refresh() }} />}
+      {newAcct && <NewAccount onClose={() => setNewAcct(false)} onDone={() => { setNewAcct(false); setLost(false); store.set('khata.account', '1'); store.set('khata.tips', ''); setShowTips(true); setWelcome(true); voice.clear(); setDueNow([]); setTab('home'); api.config().then(setCfg).catch(() => {}); refresh() }} />}
+
+      {lost && !newAcct && (
+        <div role="alert" className="bg-amber-soft border-b border-line no-print">
+          <div className="max-w-6xl mx-auto flex flex-wrap items-center gap-3 px-4 py-3">
+            <Icon n="alert" className="w-5 h-5 text-amber shrink-0" />
+            <p className="flex-1 min-w-48 font-semibold text-amber">Your shop was cleared because this demo server restarted. Entries on the hosted demo are not permanent. You can create it again.</p>
+            <button onClick={() => setNewAcct(true)} className="min-h-11 px-4 rounded-full bg-forest text-white font-bold">Create shop again</button>
+            <button onClick={() => { store.set('khata.account', ''); setLost(false) }} aria-label="Dismiss" className="min-w-11 min-h-11 grid place-items-center text-muted"><Icon n="x" /></button>
+          </div>
+        </div>
+      )}
 
       {welcome && (
         <div role="status" className="bg-mint border-b border-line no-print">
