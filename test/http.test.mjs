@@ -156,3 +156,21 @@ test('notifications: only real, due items; delivery is recorded once', async () 
   assert.equal((await call(app, 'post', '/api/notifications/ack', { session: A, body: { commitmentId: 'bad', key: 'x' } })).status, 400)
   assert.ok(state.report)
 })
+
+test('new account: empty shop with the given names, other visitors untouched, no second conversion', async () => {
+  const db = openDb(':memory:'), app = createApp(db)
+  await call(app, 'get', '/api/state', { session: B }) // B keeps its demo data
+  assert.equal((await call(app, 'post', '/api/new-account', { session: A, body: { owner: '', shop: 'X' } })).status, 400)
+  const r = await call(app, 'post', '/api/new-account', { session: A, body: { owner: '  Asha   Rao ', shop: 'Rao <b>General</b> Store' } })
+  assert.equal(r.status, 200)
+  const s = (await call(app, 'get', '/api/state', { session: A })).body
+  assert.equal(s.customers.length, 0)
+  assert.equal(s.stats.outstanding_paise, 0)
+  assert.equal(s.recent.length, 0)
+  const cfg = (await call(app, 'get', '/api/config', { session: A })).body
+  assert.deepEqual([cfg.shop, cfg.owner, cfg.demo], ['Rao bGeneral/b Store', 'Asha Rao', false])
+  assert.ok((await call(app, 'get', '/api/state', { session: B })).body.customers.length > 0)
+  assert.equal((await call(app, 'post', '/api/new-account', { session: A, body: { owner: 'A', shop: 'B' } })).status, 409)
+  assert.equal((await call(app, 'post', '/api/reset-demo', { session: A })).status, 403) // a real shop cannot be reset
+  assert.equal((await call(app, 'post', '/api/converse', { session: A, body: { text: 'Ramesh ko 500 rupaye udhaar diye' } })).status, 200)
+})

@@ -70,7 +70,7 @@ export function createApp(db = openDb()) {
     const ai = aiConfigured(), stt = sttConfigured() // the UI shows "AI enhancement not configured" when ai is false
     const s = sid(req)
     const shop = s ? L.getShop(db, L.shopFor(db, s)) : null
-    return { shop: shop?.name ?? 'Sharma Kirana Store', demo: shop ? !!shop.is_demo : true, ai, stt }
+    return { shop: shop?.name ?? 'Sharma Kirana Store', demo: shop ? !!shop.is_demo : true, ...(shop?.owner ? { owner: shop.owner } : {}), ai, stt }
   })
   route('get', '/api/state', (req) => {
     const shopId = L.shopFor(db, sid(req))
@@ -134,6 +134,7 @@ export function createApp(db = openDb()) {
     if (!okSession(sid(req))) throw bad('Invalid session')
     return transcribe(req.body?.audio)
   })
+  route('post', '/api/new-account', (req) => ({ shop: L.createAccount(db, L.shopFor(db, sid(req)), req.body?.owner, req.body?.shop) }))
   route('post', '/api/reset-demo', (req) => { L.resetDemo(db, L.shopFor(db, sid(req))); return { ok: true } }) // only this visitor's own shop
 
   const dist = fileURLToPath(new URL('../dist', import.meta.url))

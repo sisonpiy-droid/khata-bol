@@ -8,7 +8,7 @@ PRAGMA busy_timeout = 5000;
 PRAGMA foreign_keys = ON;
 CREATE TABLE IF NOT EXISTS shops (
   id INTEGER PRIMARY KEY, name TEXT NOT NULL, is_demo INTEGER NOT NULL DEFAULT 0,
-  visitor TEXT, last_seen TEXT -- public demo: one private shop per visitor session
+  visitor TEXT, last_seen TEXT, owner TEXT -- public demo: one private shop per visitor session
 );
 CREATE TABLE IF NOT EXISTS customers (
   id INTEGER PRIMARY KEY, shop_id INTEGER NOT NULL REFERENCES shops(id),
@@ -90,6 +90,7 @@ export function openDb(path = dbPath()) {
   // Databases created before per-visitor demos lack these columns.
   const cols = db.prepare('PRAGMA table_info(shops)').all().map((c) => c.name)
   if (!cols.includes('visitor')) db.exec('ALTER TABLE shops ADD COLUMN visitor TEXT; ALTER TABLE shops ADD COLUMN last_seen TEXT;')
+  if (!cols.includes('owner')) db.exec('ALTER TABLE shops ADD COLUMN owner TEXT;')
   if (!db.prepare('PRAGMA table_info(audit_events)').all().some((c) => c.name === 'shop_id')) db.exec('ALTER TABLE audit_events ADD COLUMN shop_id INTEGER;')
   db.exec('CREATE UNIQUE INDEX IF NOT EXISTS shop_visitor ON shops(visitor) WHERE visitor IS NOT NULL')
   return db

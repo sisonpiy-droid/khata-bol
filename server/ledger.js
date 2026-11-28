@@ -28,7 +28,7 @@ const dropFollowUps = (db, shopId) => {
   db.prepare('DELETE FROM commitments WHERE shop_id = ?').run(shopId)
 }
 
-export const getShop = (db, shopId) => db.prepare('SELECT id, name, is_demo FROM shops WHERE id = ?').get(shopId)
+export const getShop = (db, shopId) => db.prepare('SELECT id, name, owner, is_demo FROM shops WHERE id = ?').get(shopId)
 export const balanceOf = (db, cid) => db.prepare('SELECT COALESCE(SUM(delta_paise), 0) AS b FROM transactions WHERE customer_id = ?').get(cid).b
 
 // The visitor's private demo shop, created (and seeded with synthetic data) on first use.
@@ -223,6 +223,27 @@ export function seedDemo(db, shopId) {
       db.prepare('INSERT INTO commitment_history (commitment_id, shop_id, ts, event, detail) VALUES (?, ?, ?, ?, ?)').run(id, shopId, at, 'created', '{"synthetic":true}')
     })
   })
+}
+
+// Turns this visitor's demo shop into their own empty shop: sample data is deleted, nothing is seeded.
+// A real shop is never pruned or reset, and only a demo shop can be converted.
+export function createAccount(db, shopId, owner, shopName) {
+  const clean = (v) => String(v ?? '').replace(/[\x00-\x1f<>]/g, '').replace(/\s+/g, ' ').trim()
+  const o = clean(owner), s = clean(shopName)
+  if (o.length < 1 || o.length > 60) throw new LedgerError('Please enter your name (up to 60 letters).')
+  if (s.length < 1 || s.length > 60) throw new LedgerError('Please enter your shop name (up to 60 letters).')
+  const shop = getShop(db, shopId)
+  if (!shop?.is_demo) throw new LedgerError('This shop already has an account', 'conflict')
+  tx(db, () => {
+    dropFollowUps(db, shopId)
+    db.prepare('DELETE FROM transactions WHERE shop_id = ?').run(shopId)
+    db.prepare('DELETE FROM audit_events WHERE shop_id = ?').run(shopId)
+    db.prepare('DELETE FROM customers WHERE shop_id = ?').run(shopId)
+    db.prepare('DELETE FROM conversations WHERE id = (SELECT visitor FROM shops WHERE id = ?)').run(shopId)
+    db.prepare('UPDATE shops SET name = ?, owner = ?, is_demo = 0 WHERE id = ?').run(s, o, shopId)
+    audit(db, null, 'account_created', { shopId }, shopId)
+  })
+  return getShop(db, shopId)
 }
 
 // Restores this visitor's demo to its starting point. Refuses on any shop that is not flagged demo.

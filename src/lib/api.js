@@ -25,6 +25,7 @@ export const api = {
   history: (customerId) => get(`/api/history?customerId=${customerId}`),
   converse: (body) => post('/api/converse', body),
   resetDemo: () => post('/api/reset-demo'),
+  newAccount: (body) => post('/api/new-account', body),
   daily: (date) => get(`/api/reports/daily${date ? `?date=${date}` : ''}`),
   weekly: () => get('/api/reports/weekly'),
   followups: (status = 'open', sort = 'due') => get(`/api/followups?status=${status}&sort=${sort}`),
