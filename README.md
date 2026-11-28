@@ -1,5 +1,10 @@
 # Khata Bol · खाता बोल
 
+[![CI](https://github.com/sisonpiy-droid/khata-bol/actions/workflows/ci.yml/badge.svg)](https://github.com/sisonpiy-droid/khata-bol/actions/workflows/ci.yml)
+![Node](https://img.shields.io/badge/node-24-339933) ![Tests](https://img.shields.io/badge/tests-105%20passing-1f6b3a) ![Docker](https://img.shields.io/badge/docker-compose-2496ED)
+
+**Live:** https://khata-bol-umber.vercel.app · **Docs:** [Architecture](docs/ARCHITECTURE.md) · [API](docs/API.md) · [Security](SECURITY.md) · [Contributing](CONTRIBUTING.md)
+
 **Your shop's accounts, just a conversation away.**
 A voice-first udhaar (credit) ledger and payment follow-up assistant for India's kirana shopkeepers. Speak the entry, hear it read back, say "haan", and it is saved. Then ask for the day's accounts, set a payment promise, and get reminded. Category: Livelihoods and Small Business.
 
@@ -14,7 +19,7 @@ No `.env` and no API keys are needed. Without Docker:
 ```bash
 npm install
 npm run dev              # app on http://localhost:5173, API on :8787 (Node 22.13+)
-npm test                 # 104 tests: ledger, reports, reminders, dates, dialogue, security, voice loop (simulated recognizer)
+npm test                 # 105 tests: ledger, reports, reminders, dates, dialogue, security, voice loop (simulated recognizer)
 ```
 
 Use **Chrome** and allow the microphone. `localhost` counts as secure, so voice works without HTTPS.
@@ -35,6 +40,11 @@ Use **Chrome** and allow the microphone. `localhost` counts as secure, so voice 
 | "Aaj ka hisaab batao" | Today's real credit given and payments received |
 
 Informal talk works too: "Ramesh ko 500 ka samaan diya", "Ab total batao" (this customer) vs "Total kitna baaki hai?" (everyone), "Aaj kitna udhaar diya?", "Nahi, paanch sau nahi, teen sau" (the last amount wins), "Kal wale 300 cancel kar do" (reverses that entry after confirmation), "Rameshwar ko add karo" (adds a customer after confirmation).
+
+## Your own shop and the Customers screen
+
+- **New account:** on the sample data, tap **New account**, enter your name and shop name, and the sample data is replaced by an empty shop of your own.
+- **Customers:** summary strip (customers, owing, total due), search, All / Owing / Clear filters, sorting (most owed, recent, A to Z), last-activity time, and a detail page with credit given, paid back, spoken balance, a reminder shortcut and a polite message you can copy or share yourself.
 
 ## Reports, reminders and the daily briefing
 
@@ -89,7 +99,7 @@ mic -> speech recognition -> text ──> POST /api/converse ──> state machi
 - **UI state machine** (`src/lib/machine.js`): idle, listening, processing, speaking, awaiting_*, saving, error. It cannot listen while speaking, so the mic never transcribes the app's own voice.
 - **Ledger** (`server/ledger.js`): amounts are integer paise; every entry has an idempotency key (a repeated confirm never double-posts); rows are immutable (database triggers); mistakes are fixed by a linked reversal plus an audit event; a failed save is reported, never faked. Backend validation, not just UI.
 
-Deploy: `railway.json` + `Dockerfile` run as one Node service; `/health` reports readiness. Steps in [RAILWAY.md](RAILWAY.md).
+Deploy: `docker compose up`, or `railway.json` + `Dockerfile` as one Node service (`/health` reports readiness), or Vercel, where `api/index.js` runs the same Express app as a function. On Vercel the SQLite file lives in `/tmp`, so data is not permanent there. Steps in [RAILWAY.md](RAILWAY.md).
 
 Folders: `server/` (API, ledger, reports, commitments, dates, parser, dialogue), `src/` (React UI, voice, state machine), `test/`, `Dockerfile`, `compose.yaml`.
 
@@ -105,11 +115,11 @@ Add a language by adding a row to `src/lib/languages.js`; the transaction engine
 
 ## Optional AI enhancement
 
-Set `GEMINI_API_KEY` or `ANTHROPIC_API_KEY` (see `.env.example`). Without a key the app shows "AI enhancement not configured" and keeps working.
+Set `GEMINI_API_KEY`, or `ANTHROPIC_API_KEY` together with `ANTHROPIC_MODEL` (see `.env.example`). Without a key the app shows "AI enhancement not configured" and keeps working.
 
 ## Status and honest limitations
 
-- Tested automatically (`npm test`, 65 tests): ledger maths and float safety, idempotency and concurrent confirmations, overpayment, reversals, ambiguity and uncertain names, informal phrases, corrections, stale answers, persistence across restart, startup without keys, visitor isolation and cross-session access attempts, input validation, rate limits, parameterised SQL, failed database writes, expiry, Kannada core phrases, and the **real voice loop** (`src/lib/voice.js`) driven by a simulated recognizer and speaker against the real backend: no mic during speech, interruption, low confidence, silence, permission denied, network retry, double tap, tab hidden, refresh restore, language switch, dispose.
+- Tested automatically (`npm test`, 105 tests, also run on every push by CI): ledger maths and float safety, idempotency and concurrent confirmations, overpayment, reversals, ambiguity and uncertain names, informal phrases, corrections, stale answers, persistence across restart, startup without keys, visitor isolation and cross-session access attempts, input validation, rate limits, parameterised SQL, failed database writes, expiry, Kannada core phrases, and the **real voice loop** (`src/lib/voice.js`) driven by a simulated recognizer and speaker against the real backend: no mic during speech, interruption, low confidence, silence, permission denied, network retry, double tap, tab hidden, refresh restore, language switch, dispose.
 - Tested in the browser (production build): onboarding, ambiguity card, overpayment warning, refresh restore, language persistence, offline banner, customer search, no console or CSP errors, 375 px layout. The real microphone-denied message was seen in a real browser. The voice loop is driven only by **simulated** recognition because no microphone is available here: this proves state transitions and echo protection, **not** real recognition accuracy.
 - **Needs manual verification** ([docs/VOICE-TEST-CHECKLIST.md](docs/VOICE-TEST-CHECKLIST.md)): real microphone capture and accuracy, spoken replies on each device, Kannada, and `docker compose up` (Docker was not installed on the development machine; the files are standard but unrun).
 - Privacy and security limits are written down in [docs/PRIVACY-SECURITY.md](docs/PRIVACY-SECURITY.md). The anonymous demo-session model is **not** production authentication; there is no encryption at rest and no backup.

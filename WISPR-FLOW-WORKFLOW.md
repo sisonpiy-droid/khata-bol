@@ -21,7 +21,7 @@ An AI assistant cannot operate Wispr Flow, so I cannot document your usage for y
 - Team member(s) who used Wispr Flow: _______________
 - Device / OS / Wispr Flow version: _______________
 - Dates used: _______________
-- Where it was used (the coding assistant terminal, the desktop app, GitHub, docs, chat): _______________
+- Where it was used (coding terminal, AI coding assistant, GitHub, docs, chat): _______________
 
 ### Tasks done by dictation (tick only what is true)
 - [ ] Wrote or refined product requirements / prompts for the coding assistant
@@ -46,8 +46,8 @@ An AI assistant cannot operate Wispr Flow, so I cannot document your usage for y
 
 Do these yourself and keep the files; do not describe evidence you do not have.
 
-1. Install Wispr Flow on the laptop you build on and enable it for your terminal / the coding assistant.
-2. **Screen-record 60 to 90 seconds** of dictating a real prompt into the coding assistant with Wispr Flow (show the Wispr Flow indicator, the dictated text appearing, and the the coding assistant response).
+1. Install Wispr Flow on the laptop you build on and enable it for your terminal and coding assistant.
+2. **Screen-record 60 to 90 seconds** of dictating a real prompt into your coding assistant with Wispr Flow (show the Wispr Flow indicator, the dictated text appearing, and the assistant's response).
 3. Open Wispr Flow's history and **screenshot** the entries for that session (hide anything private).
 4. Dictate one bug report and one test scenario the same way; save the text and a timestamp.
 5. Record a short clip of the **Khata Bol dictation field**: click "Dictate with Wispr Flow (optional)", dictate "Ramesh ko 500 rupaye udhaar diye", show the confirmation card appearing (and that nothing is saved until you confirm).

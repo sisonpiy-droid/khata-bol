@@ -1,10 +1,11 @@
 // Optional AI layer. Everything here is an enhancement: with no keys the deterministic parser (nlu.js) runs alone.
 // The model only turns words into a structured guess; it never sees balances or touches the database.
-const MODEL = process.env.ANTHROPIC_MODEL || 'the-model-id'
+const MODEL = process.env.ANTHROPIC_MODEL // the Anthropic provider is used only when both a key and a model id are set
+const anthropicOn = () => !!(process.env.ANTHROPIC_API_KEY && MODEL)
 const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-3.6-flash'
 const CODES = 'hi-IN en-IN kn-IN ta-IN te-IN mr-IN bn-IN gu-IN pa-guru-IN ml-IN ur-IN en-US'
 
-export const aiConfigured = () => !!(process.env.ANTHROPIC_API_KEY || process.env.GEMINI_API_KEY)
+export const aiConfigured = () => !!(anthropicOn() || process.env.GEMINI_API_KEY)
 export const sttConfigured = () => !!process.env.GEMINI_API_KEY
 
 const PARSE = `You convert one spoken command from an Indian kirana (grocery) shopkeeper's udhaar (credit) ledger into JSON.
@@ -17,7 +18,7 @@ Reply with ONLY this JSON object, no markdown:
 - Use unknown if the text is none of these. Use null for anything not stated. Never invent a name or amount.`
 
 async function callLlm(system, content) {
-  if (process.env.ANTHROPIC_API_KEY) {
+  if (anthropicOn()) {
     const r = await fetch(`${process.env.ANTHROPIC_BASE_URL || 'https://api.anthropic.com'}/v1/messages`, {
       method: 'POST',
       headers: { 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
