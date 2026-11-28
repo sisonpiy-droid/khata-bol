@@ -1,6 +1,5 @@
 # Khata Bol · खाता बोल
 
-[![CI](https://github.com/sisonpiy-droid/khata-bol/actions/workflows/ci.yml/badge.svg)](https://github.com/sisonpiy-droid/khata-bol/actions/workflows/ci.yml)
 ![Node](https://img.shields.io/badge/node-24-339933) ![Tests](https://img.shields.io/badge/tests-105%20passing-1f6b3a) ![Docker](https://img.shields.io/badge/docker-compose-2496ED)
 
 **Live:** https://khata-bol-umber.vercel.app · **Docs:** [Architecture](docs/ARCHITECTURE.md) · [API](docs/API.md) · [Security](SECURITY.md) · [Contributing](CONTRIBUTING.md)
@@ -119,7 +118,7 @@ Set `GEMINI_API_KEY`, or `ANTHROPIC_API_KEY` together with `ANTHROPIC_MODEL` (se
 
 ## Status and honest limitations
 
-- Tested automatically (`npm test`, 105 tests, also run on every push by CI): ledger maths and float safety, idempotency and concurrent confirmations, overpayment, reversals, ambiguity and uncertain names, informal phrases, corrections, stale answers, persistence across restart, startup without keys, visitor isolation and cross-session access attempts, input validation, rate limits, parameterised SQL, failed database writes, expiry, Kannada core phrases, and the **real voice loop** (`src/lib/voice.js`) driven by a simulated recognizer and speaker against the real backend: no mic during speech, interruption, low confidence, silence, permission denied, network retry, double tap, tab hidden, refresh restore, language switch, dispose.
+- Tested automatically (`npm test`, 105 tests): ledger maths and float safety, idempotency and concurrent confirmations, overpayment, reversals, ambiguity and uncertain names, informal phrases, corrections, stale answers, persistence across restart, startup without keys, visitor isolation and cross-session access attempts, input validation, rate limits, parameterised SQL, failed database writes, expiry, Kannada core phrases, and the **real voice loop** (`src/lib/voice.js`) driven by a simulated recognizer and speaker against the real backend: no mic during speech, interruption, low confidence, silence, permission denied, network retry, double tap, tab hidden, refresh restore, language switch, dispose.
 - Tested in the browser (production build): onboarding, ambiguity card, overpayment warning, refresh restore, language persistence, offline banner, customer search, no console or CSP errors, 375 px layout. The real microphone-denied message was seen in a real browser. The voice loop is driven only by **simulated** recognition because no microphone is available here: this proves state transitions and echo protection, **not** real recognition accuracy.
 - **Needs manual verification** ([docs/VOICE-TEST-CHECKLIST.md](docs/VOICE-TEST-CHECKLIST.md)): real microphone capture and accuracy, spoken replies on each device, Kannada, and `docker compose up` (Docker was not installed on the development machine; the files are standard but unrun).
 - Privacy and security limits are written down in [docs/PRIVACY-SECURITY.md](docs/PRIVACY-SECURITY.md). The anonymous demo-session model is **not** production authentication; there is no encryption at rest and no backup.
