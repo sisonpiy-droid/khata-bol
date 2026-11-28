@@ -66,7 +66,7 @@ export function pruneStale(db, days = STALE_DAYS) {
 }
 
 export function listCustomers(db, shopId) {
-  return db.prepare(`SELECT c.id, c.name, COALESCE(SUM(t.delta_paise), 0) AS balance_paise
+  return db.prepare(`SELECT c.id, c.name, COALESCE(SUM(t.delta_paise), 0) AS balance_paise, MAX(t.ts) AS last_ts
     FROM customers c LEFT JOIN transactions t ON t.customer_id = c.id WHERE c.shop_id = ? GROUP BY c.id ORDER BY c.name`).all(shopId)
 }
 

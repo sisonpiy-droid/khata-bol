@@ -207,7 +207,7 @@ export default function App() {
             <Home data={data ?? EMPTY} loading={!data} cfg={cfg} v={v} hint={hint} typed={typed} setTyped={setTyped} lang={lang} setLang={setLang} tips={tips} voiceOk={voiceOk} actions={actions} />
           </>
         )}
-        {tab === 'ledger' && <Ledger data={data ?? EMPTY} onReverse={actions.reverse} />}
+        {tab === 'ledger' && <Ledger data={data ?? EMPTY} onReverse={actions.reverse} actions={actions} shop={cfg.shop} />}
         {tab === 'reports' && <Reports actions={actions} version={data} />}
         {tab === 'reminders' && <Reminders customers={(data ?? EMPTY).customers} lang={lang} shop={cfg.shop} version={data} onChanged={refresh} notify={notify} />}
       </main>
